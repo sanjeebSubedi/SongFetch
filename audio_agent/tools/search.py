@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+import argparse
+import json
+import sys
+
+from audio_agent.agents.search_query_builder.agent import build_song_request
+from audio_agent.providers.ollama import (
+    DEFAULT_OLLAMA_HOST,
+    DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OLLAMA_TEMPERATURE,
+)
 from audio_agent.tools._shared import get_yt_dlp
 from audio_agent.types import SearchResult
 
@@ -46,3 +56,88 @@ def search_song_audio(query: str, limit: int = 5) -> list[SearchResult]:
         )
 
     return matches
+
+
+def search_from_request(
+    user_input: str,
+    *,
+    model: str = DEFAULT_OLLAMA_MODEL,
+    host: str = DEFAULT_OLLAMA_HOST,
+    temperature: float = DEFAULT_OLLAMA_TEMPERATURE,
+    limit: int = 5,
+) -> list[SearchResult]:
+    """Build a search query from natural language, then search with yt-dlp."""
+    song_request = build_song_request(
+        user_input,
+        model=model,
+        host=host,
+        temperature=temperature,
+    )
+    return search_song_audio(song_request.search_query, limit=limit)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Search YouTube with yt-dlp and print candidate matches as JSON."
+    )
+    parser.add_argument(
+        "query",
+        nargs="+",
+        help="Natural-language song request, or a direct search query with --direct-query",
+    )
+    parser.add_argument(
+        "--direct-query",
+        action="store_true",
+        help="Treat the input as a raw YouTube search query and skip the LLM query builder",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+        help="Number of matches to return",
+    )
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_OLLAMA_MODEL,
+        help="Ollama model name to use when building a search query",
+    )
+    parser.add_argument(
+        "--host",
+        default=DEFAULT_OLLAMA_HOST,
+        help="Host for the Ollama server when building a search query",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=DEFAULT_OLLAMA_TEMPERATURE,
+        help="Sampling temperature for the query builder model",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    query = " ".join(args.query).strip()
+
+    try:
+        if args.direct_query:
+            matches = search_song_audio(query, limit=args.limit)
+        else:
+            matches = search_from_request(
+                query,
+                model=args.model,
+                host=args.host,
+                temperature=args.temperature,
+                limit=args.limit,
+            )
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    print(json.dumps(matches, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
