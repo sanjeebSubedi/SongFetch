@@ -33,6 +33,7 @@ name = "audio-agent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "mutagen" },
     { name = "ollama" },
     { name = "pydantic" },
     { name = "yt-dlp", extra = ["default"] },
@@ -40,6 +41,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "mutagen", specifier = ">=1.47" },
     { name = "ollama", specifier = ">=0.4.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "yt-dlp", extras = ["default"] },

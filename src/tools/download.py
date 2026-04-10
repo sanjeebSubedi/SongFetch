@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
-from audio_agent.tools._shared import (
+from src.tools._shared import (
     DEFAULT_AUDIO_FORMAT,
     DEFAULT_OUTPUT_DIR,
     get_yt_dlp,
     resolve_output_path,
 )
-from audio_agent.types import DownloadResult
+from src.types import DownloadResult
 
 
 def download_song_audio(
     url: str,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR,
     audio_format: str = DEFAULT_AUDIO_FORMAT,
+    filename: str | None = None,
 ) -> DownloadResult:
     """Download audio for a selected URL with yt-dlp."""
     source_url = url.strip()
@@ -33,12 +35,16 @@ def download_song_audio(
     if normalized_format == "m4a":
         format_selector = "bestaudio[ext=m4a]/bestaudio/best"
 
+    output_template = "%(title).200B [%(id)s].%(ext)s"
+    if filename is not None:
+        output_template = f"{_sanitize_filename_stem(filename)}.%(ext)s"
+
     download_options: dict[str, object] = {
         "format": format_selector,
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
-        "outtmpl": str(target_dir / "%(title).200B [%(id)s].%(ext)s"),
+        "outtmpl": str(target_dir / output_template),
     }
 
     if normalized_format != "best":
@@ -66,3 +72,11 @@ def download_song_audio(
         "output_path": str(output_path),
         "audio_format": normalized_format,
     }
+
+
+def _sanitize_filename_stem(raw_filename: str) -> str:
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", raw_filename)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip().strip(".")
+    if not cleaned:
+        raise ValueError("filename must contain at least one valid character")
+    return cleaned[:200]

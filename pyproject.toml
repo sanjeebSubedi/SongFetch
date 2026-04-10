@@ -5,14 +5,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "audio-agent"
 version = "0.1.0"
-description = "Two yt-dlp helper functions for searching and downloading song audio"
+description = "Agentic workflow for song search, metadata lookup, and audio download"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "mutagen>=1.47",
     "ollama>=0.4.0",
     "pydantic>=2.0",
     "yt-dlp[default]",
 ]
 
 [tool.setuptools.packages.find]
-include = ["audio_agent*"]
+include = ["src*"]
