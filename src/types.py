@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TypedDict
 
 
@@ -7,6 +8,7 @@ class SearchResult(TypedDict):
     id: str | None
     title: str | None
     uploader: str | None
+    description: str | None
     duration_seconds: int | None
     webpage_url: str | None
     view_count: int | None
@@ -21,17 +23,36 @@ class DownloadResult(TypedDict):
 
 
 class MusicMetadataResult(TypedDict):
-    recording_id: str
-    release_group_id: str | None
-    release_group_primary_type: str | None
-    release_group_secondary_types: list[str] | None
-    release_status: str | None
+    track_id: int
+    collection_id: int | None
     title: str | None
     artist: str | None
-    artist_credit: str | None
     album: str | None
-    first_release_date: str | None
-    length_ms: int | None
-    score: int | None
-    disambiguation: str | None
-    musicbrainz_url: str
+    release_date: str | None
+    duration_ms: int | None
+    track_explicitness: str | None
+    is_explicit: bool | None
+    track_number: int | None
+    disc_number: int | None
+    primary_genre_name: str | None
+    artwork_url: str | None
+    preview_url: str | None
+    track_view_url: str | None
+    collection_view_url: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class TagMetadata:
+    title: str
+    artist: str | None = None
+    album: str | None = None
+    artwork_url: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LyricsResult:
+    plain_lyrics: str
+    source: str
+    found: bool = True
+    synced_available: bool = False
+    synced_used: bool = False

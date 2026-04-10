@@ -284,31 +284,34 @@ class MetadataRequestBuilderTests(unittest.TestCase):
 class MetadataSelectorTests(unittest.TestCase):
     def test_select_metadata_match_returns_model(self) -> None:
         selection = MetadataSelection(
-            recording_id="recording-1",
-            release_group_id="release-group-1",
+            track_id=123,
+            collection_id=456,
             title="Yellow",
             artist="Coldplay",
             album="Parachutes",
+            artwork_url="https://example.com/art.jpg",
             duration_ms=266000,
             is_explicit=True,
             reason="Earliest non-compilation studio release with valid length.",
         )
         metadata_matches = [
             {
-                "recording_id": "recording-1",
-                "release_group_id": "release-group-1",
-                "release_group_primary_type": "Album",
-                "release_group_secondary_types": None,
-                "release_status": "Official",
+                "track_id": 123,
+                "collection_id": 456,
                 "title": "Yellow",
                 "artist": "Coldplay",
-                "artist_credit": "Coldplay",
                 "album": "Parachutes",
-                "first_release_date": "2000-06-26",
-                "length_ms": 266000,
-                "score": 100,
-                "disambiguation": None,
-                "musicbrainz_url": "https://musicbrainz.org/recording/recording-1",
+                "release_date": "2000-06-26T07:00:00Z",
+                "duration_ms": 266000,
+                "track_explicitness": "explicit",
+                "is_explicit": True,
+                "track_number": 5,
+                "disc_number": 1,
+                "primary_genre_name": "Alternative",
+                "artwork_url": "https://example.com/art.jpg",
+                "preview_url": "https://example.com/preview.m4a",
+                "track_view_url": "https://music.apple.com/us/song/yellow/123",
+                "collection_view_url": "https://music.apple.com/us/album/parachutes/456",
             }
         ]
 
@@ -326,31 +329,34 @@ class MetadataSelectorTests(unittest.TestCase):
 
     def test_select_metadata_match_passes_metadata_candidates_to_model(self) -> None:
         selection = MetadataSelection(
-            recording_id="recording-1",
-            release_group_id="release-group-1",
+            track_id=123,
+            collection_id=456,
             title="Yellow",
             artist="Coldplay",
             album="Parachutes",
+            artwork_url="https://example.com/art.jpg",
             duration_ms=266000,
             is_explicit=True,
             reason="Best studio candidate.",
         )
         metadata_matches = [
             {
-                "recording_id": "recording-1",
-                "release_group_id": "release-group-1",
-                "release_group_primary_type": "Album",
-                "release_group_secondary_types": None,
-                "release_status": "Official",
+                "track_id": 123,
+                "collection_id": 456,
                 "title": "Yellow",
                 "artist": "Coldplay",
-                "artist_credit": "Coldplay",
                 "album": "Parachutes",
-                "first_release_date": "2000-06-26",
-                "length_ms": 266000,
-                "score": 100,
-                "disambiguation": None,
-                "musicbrainz_url": "https://musicbrainz.org/recording/recording-1",
+                "release_date": "2000-06-26T07:00:00Z",
+                "duration_ms": 266000,
+                "track_explicitness": "explicit",
+                "is_explicit": True,
+                "track_number": 5,
+                "disc_number": 1,
+                "primary_genre_name": "Alternative",
+                "artwork_url": "https://example.com/art.jpg",
+                "preview_url": "https://example.com/preview.m4a",
+                "track_view_url": "https://music.apple.com/us/song/yellow/123",
+                "collection_view_url": "https://music.apple.com/us/album/parachutes/456",
             }
         ]
 
@@ -370,8 +376,12 @@ class MetadataSelectorTests(unittest.TestCase):
         payload = json.loads(kwargs["user_input"])
         self.assertEqual(payload["original_user_request"], "download Yellow by Coldplay")
         self.assertEqual(
-            payload["musicbrainz_candidates"][0]["release_group_id"],
-            "release-group-1",
+            payload["itunes_candidates"][0]["collection_id"],
+            456,
+        )
+        self.assertEqual(
+            payload["itunes_candidates"][0]["artwork_url"],
+            "https://example.com/art.jpg",
         )
         self.assertIs(kwargs["response_model"], MetadataSelection)
         self.assertIn("metadata selection assistant", kwargs["system_prompt"].lower())
@@ -382,23 +392,25 @@ class MetadataSelectorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             select_metadata_match("download Yellow by Coldplay", [])
 
-    def test_select_metadata_match_requires_release_group_id(self) -> None:
+    def test_select_metadata_match_requires_track_and_collection_id(self) -> None:
         metadata_matches = [
             {
-                "recording_id": "recording-1",
-                "release_group_id": None,
-                "release_group_primary_type": "Album",
-                "release_group_secondary_types": None,
-                "release_status": "Official",
+                "track_id": 123,
+                "collection_id": None,
                 "title": "Yellow",
                 "artist": "Coldplay",
-                "artist_credit": "Coldplay",
                 "album": "Parachutes",
-                "first_release_date": "2000-06-26",
-                "length_ms": 266000,
-                "score": 100,
-                "disambiguation": None,
-                "musicbrainz_url": "https://musicbrainz.org/recording/recording-1",
+                "release_date": "2000-06-26T07:00:00Z",
+                "duration_ms": 266000,
+                "track_explicitness": "explicit",
+                "is_explicit": True,
+                "track_number": 5,
+                "disc_number": 1,
+                "primary_genre_name": "Alternative",
+                "artwork_url": "https://example.com/art.jpg",
+                "preview_url": "https://example.com/preview.m4a",
+                "track_view_url": "https://music.apple.com/us/song/yellow/123",
+                "collection_view_url": "https://music.apple.com/us/album/parachutes/456",
             }
         ]
         with self.assertRaises(ValueError):
@@ -408,11 +420,12 @@ class MetadataSelectorTests(unittest.TestCase):
 class DownloadSelectorTests(unittest.TestCase):
     def test_select_download_audio_request_returns_model(self) -> None:
         metadata_selection = MetadataSelection(
-            recording_id="recording-1",
-            release_group_id="release-group-1",
+            track_id=123,
+            collection_id=456,
             title="Yellow",
             artist="Coldplay",
             album="Parachutes",
+            artwork_url="https://example.com/art.jpg",
             duration_ms=266000,
             is_explicit=True,
             reason="Canonical studio release.",
@@ -457,11 +470,12 @@ class DownloadSelectorTests(unittest.TestCase):
 
     def test_select_download_audio_request_passes_payload(self) -> None:
         metadata_selection = MetadataSelection(
-            recording_id="recording-1",
-            release_group_id="release-group-1",
+            track_id=123,
+            collection_id=456,
             title="Yellow",
             artist="Coldplay",
             album="Parachutes",
+            artwork_url="https://example.com/art.jpg",
             duration_ms=266000,
             is_explicit=True,
             reason="Canonical studio release.",
@@ -512,8 +526,12 @@ class DownloadSelectorTests(unittest.TestCase):
         )
         self.assertEqual(payload["requested_format"], "m4a")
         self.assertEqual(
-            payload["reference_metadata"]["recording_id"],
-            "recording-1",
+            payload["reference_metadata"]["track_id"],
+            123,
+        )
+        self.assertEqual(
+            payload["reference_metadata"]["artwork_url"],
+            "https://example.com/art.jpg",
         )
         self.assertEqual(payload["reference_metadata"]["duration_seconds"], 266)
         self.assertNotIn("duration_ms", payload["reference_metadata"])
@@ -522,17 +540,18 @@ class DownloadSelectorTests(unittest.TestCase):
             "https://www.youtube.com/watch?v=abc123",
         )
         self.assertIs(kwargs["response_model"], DownloadAudioSelection)
-        self.assertIn("technical procurement officer", kwargs["system_prompt"].lower())
+        self.assertIn("strict audio quality filter", kwargs["system_prompt"].lower())
         self.assertEqual(kwargs["config"].host, "http://localhost:11434")
         self.assertEqual(kwargs["config"].temperature, 0.1)
 
     def test_select_download_audio_request_requires_candidates(self) -> None:
         metadata_selection = MetadataSelection(
-            recording_id="recording-1",
-            release_group_id="release-group-1",
+            track_id=123,
+            collection_id=456,
             title="Yellow",
             artist="Coldplay",
             album="Parachutes",
+            artwork_url="https://example.com/art.jpg",
             duration_ms=266000,
             is_explicit=True,
             reason="Canonical studio release.",
@@ -541,6 +560,51 @@ class DownloadSelectorTests(unittest.TestCase):
             select_download_audio_request(
                 "download Yellow by Coldplay",
                 metadata_selection,
+                [],
+                requested_format="m4a",
+            )
+
+    def test_select_fallback_download_audio_request_prefers_audio_with_good_views(self) -> None:
+        search_results = [
+            {
+                "id": "video123",
+                "title": "Coldplay - Yellow (Official Video)",
+                "uploader": "Coldplay",
+                "description": None,
+                "duration_seconds": 269,
+                "webpage_url": "https://www.youtube.com/watch?v=video123",
+                "view_count": 1_000_000,
+            },
+            {
+                "id": "audio456",
+                "title": "Coldplay - Yellow (Official Audio)",
+                "uploader": "Coldplay - Topic",
+                "description": None,
+                "duration_seconds": 266,
+                "webpage_url": "https://www.youtube.com/watch?v=audio456",
+                "view_count": 250_000,
+            },
+        ]
+
+        selection = download_selector_agent.select_fallback_download_audio_request(
+            "download Yellow by Coldplay",
+            search_results,
+            requested_format="m4a",
+            song_name="Yellow",
+            artist="Coldplay",
+        )
+
+        self.assertEqual(
+            selection.tool_call.parameters.url,
+            "https://www.youtube.com/watch?v=audio456",
+        )
+        self.assertEqual(selection.tool_call.parameters.filename, "Coldplay - Yellow")
+        self.assertIn("audio-focused title", selection.reasoning.lower())
+
+    def test_select_fallback_download_audio_request_requires_candidates(self) -> None:
+        with self.assertRaises(ValueError):
+            download_selector_agent.select_fallback_download_audio_request(
+                "download Yellow by Coldplay",
                 [],
                 requested_format="m4a",
             )

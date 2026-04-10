@@ -8,11 +8,11 @@ class MetadataLookupRequest(BaseModel):
 
     song_name: str = Field(
         min_length=1,
-        description="Canonical song title to use for the MusicBrainz lookup",
+        description="Canonical song title to use for the metadata lookup",
     )
     artist: str = Field(
         min_length=1,
-        description="Primary artist name to use for the MusicBrainz lookup",
+        description="Primary artist name to use for the metadata lookup",
     )
     reasoning: str = Field(
         min_length=1,

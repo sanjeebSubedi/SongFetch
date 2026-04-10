@@ -5,24 +5,30 @@ import json
 import sys
 from typing import Any
 
-from src.agents.download_selector.agent import select_download_audio_request
+from src.agents.download_selector.agent import (
+    select_download_audio_request,
+    select_fallback_download_audio_request,
+)
 from src.agents.metadata_request_builder.agent import build_metadata_lookup_request
 from src.agents.metadata_selector.agent import select_metadata_match
 from src.agents.search_query_builder.agent import build_song_request
-from src.providers.musicbrainz import (
-    DEFAULT_MUSICBRAINZ_BASE_URL,
-    DEFAULT_MUSICBRAINZ_USER_AGENT,
-    MusicBrainzConfig,
+from src.providers.itunes import (
+    DEFAULT_ITUNES_BASE_URL,
+    DEFAULT_ITUNES_COUNTRY,
+    ITunesConfig,
 )
+from src.providers.lrclib import LRCLibConfig
 from src.providers.ollama import (
     DEFAULT_OLLAMA_HOST,
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_OLLAMA_TEMPERATURE,
 )
 from src.tools.download import download_song_audio
-from src.tools.metadata import fetch_music_metadata
+from src.tools.lyrics import fetch_lyrics
+from src.tools.metadata import build_fallback_tag_metadata, fetch_music_metadata
 from src.tools.search import search_song_audio
 from src.tools.tagging import embed_selected_metadata
+from src.types import LyricsResult, TagMetadata
 
 
 def run_pipeline(
@@ -33,28 +39,28 @@ def run_pipeline(
     temperature: float = DEFAULT_OLLAMA_TEMPERATURE,
     search_limit: int = 5,
     metadata_limit: int = 5,
-    musicbrainz_base_url: str = DEFAULT_MUSICBRAINZ_BASE_URL,
-    musicbrainz_user_agent: str = DEFAULT_MUSICBRAINZ_USER_AGENT,
+    itunes_base_url: str = DEFAULT_ITUNES_BASE_URL,
+    itunes_country: str = DEFAULT_ITUNES_COUNTRY,
 ) -> dict[str, Any]:
     normalized_user_input = user_input.strip()
     if not normalized_user_input:
         raise ValueError("user_input must not be empty")
 
-    _progress("1/8 Building song request from user input")
+    _progress("1/9 Building song request from user input")
     song_request = build_song_request(
         normalized_user_input,
         model=model,
         host=host,
         temperature=temperature,
     )
-    _progress("2/8 Searching YouTube candidates")
+    _progress("2/9 Searching YouTube candidates")
     search_results = search_song_audio(song_request.search_query, limit=search_limit)
     if not search_results:
         raise RuntimeError(
             "No YouTube search results were found for the generated query."
         )
 
-    _progress("3/8 Building metadata lookup request from YouTube results")
+    _progress("3/9 Building metadata lookup request from YouTube results")
     metadata_lookup_request = build_metadata_lookup_request(
         normalized_user_input,
         search_results,
@@ -62,24 +68,27 @@ def run_pipeline(
         host=host,
         temperature=temperature,
     )
-    _progress("4/8 Fetching metadata from MusicBrainz")
-    musicbrainz_config = MusicBrainzConfig(
-        base_url=musicbrainz_base_url,
-        user_agent=musicbrainz_user_agent,
+    _progress("4/9 Fetching metadata from iTunes Search API")
+    itunes_config = ITunesConfig(
+        base_url=itunes_base_url,
+        country=itunes_country,
     )
     metadata_matches = fetch_music_metadata(
         metadata_lookup_request.song_name,
         artist=metadata_lookup_request.artist,
         limit=metadata_limit,
-        config=musicbrainz_config,
+        config=itunes_config,
     )
     selected_metadata_model = None
     selected_download = None
     download_result = None
     tagging_result = None
+    selected_download_model = None
+    lyrics_result_model: LyricsResult | None = None
+    tag_metadata: TagMetadata | None = None
 
     if metadata_matches:
-        _progress("5/8 Selecting canonical metadata match")
+        _progress("5/9 Selecting canonical metadata match")
         selected_metadata_model = select_metadata_match(
             normalized_user_input,
             metadata_matches,
@@ -87,7 +96,7 @@ def run_pipeline(
             host=host,
             temperature=temperature,
         )
-        _progress("6/8 Selecting best YouTube URL for download")
+        _progress("6/9 Selecting best YouTube URL for download")
         selected_download_model = select_download_audio_request(
             normalized_user_input,
             selected_metadata_model,
@@ -97,20 +106,73 @@ def run_pipeline(
             host=host,
             temperature=temperature,
         )
+        tag_metadata = TagMetadata(
+            title=selected_metadata_model.title,
+            artist=selected_metadata_model.artist,
+            album=selected_metadata_model.album,
+            artwork_url=selected_metadata_model.artwork_url,
+        )
+    else:
+        _progress("5/9 No iTunes metadata found; switching to fallback selection")
+        _progress("6/9 Selecting fallback YouTube candidate")
+        selected_download_model = select_fallback_download_audio_request(
+            normalized_user_input,
+            search_results,
+            requested_format=song_request.format,
+            song_name=metadata_lookup_request.song_name,
+            artist=metadata_lookup_request.artist,
+        )
+        selected_result = _find_search_result_by_url(
+            search_results,
+            selected_download_model.tool_call.parameters.url,
+        )
+        tag_metadata = build_fallback_tag_metadata(
+            song_request,
+            metadata_lookup_request,
+            selected_result=selected_result,
+        )
+
+    if selected_download_model is not None:
         selected_download = selected_download_model.model_dump()
-        _progress("7/8 Downloading audio")
+        _progress("7/9 Downloading audio")
         download_result = download_song_audio(
             selected_download_model.tool_call.parameters.url,
             audio_format=selected_download_model.tool_call.parameters.format,
             filename=selected_download_model.tool_call.parameters.filename,
         )
-        _progress("8/8 Embedding selected metadata tags")
-        tagging_result = embed_selected_metadata(
-            download_result["output_path"],
-            selected_metadata_model,
-        )
-    else:
-        _progress("5/8 No metadata matches found; skipping selection and download")
+        if tag_metadata is not None:
+            _progress("8/9 Looking up lyrics")
+            lyrics_result_model = fetch_lyrics(
+                tag_metadata,
+                duration_seconds=_lyrics_duration_seconds(
+                    selected_metadata_model=selected_metadata_model,
+                    search_results=search_results,
+                    selected_url=selected_download_model.tool_call.parameters.url,
+                ),
+                config=LRCLibConfig(),
+            )
+        if selected_metadata_model is not None:
+            _progress("9/9 Embedding selected metadata tags")
+            tagging_result = embed_selected_metadata(
+                download_result["output_path"],
+                selected_metadata_model,
+                lyrics=(
+                    lyrics_result_model.plain_lyrics
+                    if lyrics_result_model is not None
+                    else None
+                ),
+            )
+        else:
+            _progress("9/9 Embedding inferred metadata tags")
+            tagging_result = embed_selected_metadata(
+                download_result["output_path"],
+                tag_metadata,
+                lyrics=(
+                    lyrics_result_model.plain_lyrics
+                    if lyrics_result_model is not None
+                    else None
+                ),
+            )
 
     return {
         "user_input": normalized_user_input,
@@ -123,19 +185,78 @@ def run_pipeline(
         ),
         "selected_download": selected_download,
         "download_result": download_result,
+        "lyrics_result": _serialize_lyrics_result(
+            lyrics_result_model,
+            lyrics_embedded=bool(
+                tagging_result.get("lyrics_embedded")
+                if isinstance(tagging_result, dict)
+                else False
+            ),
+        ),
         "tagging_result": tagging_result,
     }
+
+
+def _find_search_result_by_url(
+    search_results: list[dict[str, Any]],
+    url: str,
+) -> dict[str, Any] | None:
+    for result in search_results:
+        if result.get("webpage_url") == url:
+            return result
+    return None
+
+
+def _lyrics_duration_seconds(
+    *,
+    selected_metadata_model: Any,
+    search_results: list[dict[str, Any]],
+    selected_url: str,
+) -> int | None:
+    if selected_metadata_model is not None:
+        duration_ms = getattr(selected_metadata_model, "duration_ms", None)
+        if isinstance(duration_ms, int) and duration_ms > 0:
+            return round(duration_ms / 1000)
+
+    selected_result = _find_search_result_by_url(search_results, selected_url)
+    if selected_result is None:
+        return None
+
+    duration_seconds = selected_result.get("duration_seconds")
+    if isinstance(duration_seconds, int) and duration_seconds > 0:
+        return duration_seconds
+    return None
 
 
 def _progress(message: str) -> None:
     print(f"[pipeline] {message}", file=sys.stderr)
 
 
+def _serialize_lyrics_result(
+    lyrics_result: LyricsResult | None,
+    *,
+    lyrics_embedded: bool,
+) -> dict[str, Any]:
+    if lyrics_result is None:
+        return {
+            "found": False,
+            "source": "lrclib",
+            "lyrics_embedded": False,
+        }
+    return {
+        "found": lyrics_result.found,
+        "source": lyrics_result.source,
+        "synced_available": lyrics_result.synced_available,
+        "synced_used": lyrics_result.synced_used,
+        "lyrics_embedded": lyrics_embedded,
+    }
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Run the song request pipeline through query building, YouTube search, "
-            "MusicBrainz metadata lookup, and audio download."
+            "iTunes metadata lookup, and audio download."
         )
     )
     parser.add_argument(
@@ -169,17 +290,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--metadata-limit",
         type=int,
         default=5,
-        help="Number of MusicBrainz matches to fetch",
+        help="Number of metadata matches to fetch",
     )
     parser.add_argument(
-        "--musicbrainz-base-url",
-        default=DEFAULT_MUSICBRAINZ_BASE_URL,
-        help="Base URL for the MusicBrainz web service",
+        "--itunes-base-url",
+        default=DEFAULT_ITUNES_BASE_URL,
+        help="Base URL for the iTunes Search API",
     )
     parser.add_argument(
-        "--musicbrainz-user-agent",
-        default=DEFAULT_MUSICBRAINZ_USER_AGENT,
-        help="User-Agent header to send to MusicBrainz",
+        "--itunes-country",
+        default=DEFAULT_ITUNES_COUNTRY,
+        help="Storefront country code for the iTunes Search API",
     )
     return parser
 
@@ -196,8 +317,8 @@ def main(argv: list[str] | None = None) -> int:
             temperature=args.temperature,
             search_limit=args.search_limit,
             metadata_limit=args.metadata_limit,
-            musicbrainz_base_url=args.musicbrainz_base_url,
-            musicbrainz_user_agent=args.musicbrainz_user_agent,
+            itunes_base_url=args.itunes_base_url,
+            itunes_country=args.itunes_country,
         )
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -209,44 +330,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-# {'id': 'o_v9MY_FMcw', 'title': 'One Direction - Best Song Ever', 'uploader': 'One Direction', 'duration_seconds': 373, 'webpage_url': 'https://www.youtube.com/watch?v=o_v9MY_FMcw', 'view_count': 826542298}
-# {'id': '-zCF1-emakY', 'title': 'One Direction - Best Song Ever (Audio)', 'uploader': 'One Direction', 'duration_seconds': 200, 'webpage_url': 'https://www.youtube.com/watch?v=-zCF1-emakY', 'view_count': 19767941}
-# {'id': 'UGKl2kigv88', 'title': 'Best Song Ever - One Direction (Lyrics) 🎵', 'uploader': 'Pillow', 'duration_seconds': 195, 'webpage_url': 'https://www.youtube.com/watch?v=UGKl2kigv88', 'view_count': 1835930}
-# {'id': 'n1d3dFDc1kc', 'title': 'THE GREATEST SONG EVER MADE', 'uploader': 'Pleasantries', 'duration_seconds': 233, 'webpage_url': 'https://www.youtube.com/watch?v=n1d3dFDc1kc', 'view_count': 5450433}
-# {'id': 'TQ_juYXT4so', 'title': 'One Direction - Best Song Ever (Audio)', 'uploader': 'One Direction', 'duration_seconds': 202, 'webpage_url': 'https://www.youtube.com/watch?v=TQ_juYXT4so', 'view_count': 672909}
-
-# {
-#     "recording_id": "c00be91a-f6d9-4e76-afe3-b18862289617",
-#     "release_group_id": "5dd51c1a-8729-4e5c-ba28-81762d94a1b5",
-#     "release_group_primary_type": "Album",
-#     "release_group_secondary_types": ["Compilation"],
-#     "release_status": "Official",
-#     "title": "Best Song Ever",
-#     "artist": "One Direction",
-#     "artist_credit": "One Direction",
-#     "album": "Dance Party 2014",
-#     "first_release_date": "2014",
-#     "length_ms": 371000,
-#     "score": 100,
-#     "disambiguation": "music video",
-#     "musicbrainz_url": "https://musicbrainz.org/recording/c00be91a-f6d9-4e76-afe3-b18862289617",
-# }
-
-# {
-#     "recording_id": "43341f5d-14f8-49aa-8d99-d81de44fb9c3",
-#     "release_group_id": "f98f6fb2-0ce2-467a-a32c-2da684b8d9bb",
-#     "release_group_primary_type": "Single",
-#     "release_group_secondary_types": None,
-#     "release_status": "Official",
-#     "title": "Best Song Ever",
-#     "artist": "One Direction",
-#     "artist_credit": "One Direction",
-#     "album": "Best Song Ever (From THIS IS US)",
-#     "first_release_date": "2013-07-22",
-#     "length_ms": 200106,
-#     "score": 100,
-#     "disambiguation": None,
-#     "musicbrainz_url": "https://musicbrainz.org/recording/43341f5d-14f8-49aa-8d99-d81de44fb9c3",
-# }

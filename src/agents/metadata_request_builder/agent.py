@@ -56,6 +56,7 @@ def _build_user_prompt(user_input: str, search_results: list[SearchResult]) -> s
                 "rank": index,
                 "title": result.get("title"),
                 "uploader": result.get("uploader"),
+                "description": result.get("description"),
                 "view_count": result.get("view_count"),
                 "duration_seconds": result.get("duration_seconds"),
                 "webpage_url": result.get("webpage_url"),

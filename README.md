@@ -32,7 +32,7 @@ src/
       schema.py
   providers/
     __init__.py
-    musicbrainz.py
+    itunes.py
     ollama.py
   types.py
   tools/
@@ -41,6 +41,7 @@ src/
     metadata.py
     search.py
     download.py
+    tagging.py
 ```
 
 It currently exposes these main entry points for the workflow:
@@ -58,8 +59,8 @@ The model-powered part of the app is split by responsibility:
 `src/providers/ollama.py`
 - shared Ollama config and structured-response loading
 
-`src/providers/musicbrainz.py`
-- shared MusicBrainz web-service access for recording metadata
+`src/providers/itunes.py`
+- shared iTunes Search API access for track metadata
 
 `src/agents/search_query_builder/agent.py`
 - the song request agent prompt and schema wiring
@@ -68,7 +69,7 @@ The model-powered part of the app is split by responsibility:
 - the metadata lookup agent that turns YouTube results into canonical `song_name` and `artist`
 
 `src/agents/metadata_selector/agent.py`
-- the metadata selector agent that chooses one canonical MusicBrainz match from candidates
+- the metadata selector agent that chooses one canonical iTunes track match from candidates
 
 `src/agents/download_selector/agent.py`
 - the download selector agent that chooses one YouTube URL and builds `download_audio` args
@@ -77,7 +78,7 @@ The model-powered part of the app is split by responsibility:
 - the `SongRequest` schema for this specific agent
 
 `src/agents/metadata_request_builder/schema.py`
-- the `MetadataLookupRequest` schema for the MusicBrainz lookup step
+- the `MetadataLookupRequest` schema for the metadata lookup step
 
 `src/agents/metadata_selector/schema.py`
 - the `MetadataSelection` schema for the final canonical metadata selection step
@@ -111,7 +112,7 @@ pip install -e .
 Install `ffmpeg` locally as well, since the default output format is `m4a`.
 The pipeline also uses `mutagen` to embed selected metadata tags into the downloaded file.
 
-To use the LLM parser, make sure Ollama is running locally and that `gemma4:e4b` is available.
+To use the LLM parser, make sure Ollama is running locally and that `gemma4:31b-cloud` is available.
 
 ## Example
 
@@ -135,7 +136,7 @@ matches = search_from_request("download Yellow by Coldplay as m4a", limit=5)
 print(matches)
 ```
 
-If you want to fetch normalized metadata from MusicBrainz:
+If you want to fetch normalized metadata from the iTunes Search API:
 
 ```python
 from src import fetch_music_metadata
@@ -156,12 +157,12 @@ metadata_matches = fetch_metadata_from_search_results(user_input, search_results
 print(metadata_matches)
 ```
 
-For live MusicBrainz usage, prefer setting a meaningful `User-Agent` with contact information via
-`MUSICBRAINZ_USER_AGENT` or the `main.py` `--musicbrainz-user-agent` flag.
+For live iTunes Search API usage, you can override the storefront with `ITUNES_COUNTRY`
+or the `main.py` `--itunes-country` flag.
 
 ## Run The Pipeline
 
-Run the current pipeline from natural-language request to YouTube search results and MusicBrainz
+Run the current pipeline from natural-language request to YouTube search results and iTunes
 metadata matches:
 
 ```bash

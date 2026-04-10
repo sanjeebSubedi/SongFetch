@@ -5,6 +5,7 @@ __all__ = [
     "fetch_music_metadata",
     "fetch_metadata_from_request",
     "fetch_metadata_from_search_results",
+    "fetch_lyrics",
     "build_song_request",
     "parse_download_request",
     "build_metadata_lookup_request",
@@ -14,8 +15,11 @@ __all__ = [
     "MetadataLookupRequest",
     "MetadataSelection",
     "DownloadAudioSelection",
+    "TagMetadata",
+    "LyricsResult",
     "OllamaConfig",
-    "MusicBrainzConfig",
+    "ITunesConfig",
+    "LRCLibConfig",
 ]
 
 
@@ -44,6 +48,10 @@ def __getattr__(name: str):
         from src.tools.metadata import fetch_metadata_from_search_results
 
         return fetch_metadata_from_search_results
+    if name == "fetch_lyrics":
+        from src.tools.lyrics import fetch_lyrics
+
+        return fetch_lyrics
     if name == "build_song_request":
         from src.agents.search_query_builder.agent import build_song_request
 
@@ -84,12 +92,24 @@ def __getattr__(name: str):
         from src.agents.download_selector.schema import DownloadAudioSelection
 
         return DownloadAudioSelection
+    if name == "TagMetadata":
+        from src.types import TagMetadata
+
+        return TagMetadata
+    if name == "LyricsResult":
+        from src.types import LyricsResult
+
+        return LyricsResult
     if name == "OllamaConfig":
         from src.providers.ollama import OllamaConfig
 
         return OllamaConfig
-    if name == "MusicBrainzConfig":
-        from src.providers.musicbrainz import MusicBrainzConfig
+    if name == "ITunesConfig":
+        from src.providers.itunes import ITunesConfig
 
-        return MusicBrainzConfig
+        return ITunesConfig
+    if name == "LRCLibConfig":
+        from src.providers.lrclib import LRCLibConfig
+
+        return LRCLibConfig
     raise AttributeError(f"module 'src' has no attribute {name!r}")

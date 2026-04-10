@@ -6,6 +6,7 @@ __all__ = [
     "fetch_music_metadata",
     "fetch_metadata_from_request",
     "fetch_metadata_from_search_results",
+    "fetch_lyrics",
 ]
 
 
@@ -38,4 +39,8 @@ def __getattr__(name: str):
         from src.tools.metadata import fetch_metadata_from_search_results
 
         return fetch_metadata_from_search_results
+    if name == "fetch_lyrics":
+        from src.tools.lyrics import fetch_lyrics
+
+        return fetch_lyrics
     raise AttributeError(f"module 'src.tools' has no attribute {name!r}")

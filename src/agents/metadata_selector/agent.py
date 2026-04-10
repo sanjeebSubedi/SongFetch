@@ -26,12 +26,14 @@ def select_metadata_match(
     if not metadata_matches:
         raise ValueError("metadata_matches must not be empty")
 
-    candidates_with_release_group = [
-        match for match in metadata_matches if match.get("release_group_id")
+    candidates_with_track_identity = [
+        match
+        for match in metadata_matches
+        if match.get("track_id") and match.get("collection_id")
     ]
-    if not candidates_with_release_group:
+    if not candidates_with_track_identity:
         raise ValueError(
-            "metadata_matches must include at least one candidate with release_group_id"
+            "metadata_matches must include at least one candidate with track_id and collection_id"
         )
 
     config = OllamaConfig(
@@ -40,7 +42,7 @@ def select_metadata_match(
         temperature=temperature,
     )
     return generate_structured_response(
-        user_input=_build_user_prompt(user_input, candidates_with_release_group),
+        user_input=_build_user_prompt(user_input, candidates_with_track_identity),
         response_model=MetadataSelection,
         system_prompt=_build_system_prompt(),
         config=config,
@@ -60,25 +62,25 @@ def _build_user_prompt(
 ) -> str:
     payload = {
         "original_user_request": user_input.strip(),
-        "musicbrainz_candidates": [
+        "itunes_candidates": [
             {
                 "rank": index,
-                "recording_id": match.get("recording_id"),
-                "release_group_id": match.get("release_group_id"),
+                "track_id": match.get("track_id"),
+                "collection_id": match.get("collection_id"),
                 "title": match.get("title"),
                 "artist": match.get("artist"),
-                "artist_credit": match.get("artist_credit"),
                 "album": match.get("album"),
-                "first_release_date": match.get("first_release_date"),
-                "length_ms": match.get("length_ms"),
-                "disambiguation": match.get("disambiguation"),
-                "score": match.get("score"),
-                "release_group_primary_type": match.get("release_group_primary_type"),
-                "release_group_secondary_types": match.get(
-                    "release_group_secondary_types"
-                ),
-                "release_status": match.get("release_status"),
-                "musicbrainz_url": match.get("musicbrainz_url"),
+                "release_date": match.get("release_date"),
+                "duration_ms": match.get("duration_ms"),
+                "track_explicitness": match.get("track_explicitness"),
+                "is_explicit": match.get("is_explicit"),
+                "track_number": match.get("track_number"),
+                "disc_number": match.get("disc_number"),
+                "primary_genre_name": match.get("primary_genre_name"),
+                "artwork_url": match.get("artwork_url"),
+                "preview_url": match.get("preview_url"),
+                "track_view_url": match.get("track_view_url"),
+                "collection_view_url": match.get("collection_view_url"),
             }
             for index, match in enumerate(metadata_matches, start=1)
         ],

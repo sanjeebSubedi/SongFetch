@@ -45,6 +45,7 @@ def search_song_audio(query: str, limit: int = 5) -> list[SearchResult]:
                 "id": video_id,
                 "title": entry.get("title"),
                 "uploader": entry.get("uploader") or entry.get("channel"),
+                "description": entry.get("description"),
                 "duration_seconds": entry.get("duration"),
                 "webpage_url": webpage_url,
                 "view_count": entry.get("view_count"),

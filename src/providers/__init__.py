@@ -2,8 +2,10 @@ __all__ = [
     "OllamaConfig",
     "build_ollama_client",
     "generate_structured_response",
-    "MusicBrainzConfig",
-    "search_recordings",
+    "ITunesConfig",
+    "LRCLibConfig",
+    "lookup_lyrics",
+    "search_songs",
 ]
 
 
@@ -20,12 +22,20 @@ def __getattr__(name: str):
         from src.providers.ollama import generate_structured_response
 
         return generate_structured_response
-    if name == "MusicBrainzConfig":
-        from src.providers.musicbrainz import MusicBrainzConfig
+    if name == "ITunesConfig":
+        from src.providers.itunes import ITunesConfig
 
-        return MusicBrainzConfig
-    if name == "search_recordings":
-        from src.providers.musicbrainz import search_recordings
+        return ITunesConfig
+    if name == "search_songs":
+        from src.providers.itunes import search_songs
 
-        return search_recordings
+        return search_songs
+    if name == "LRCLibConfig":
+        from src.providers.lrclib import LRCLibConfig
+
+        return LRCLibConfig
+    if name == "lookup_lyrics":
+        from src.providers.lrclib import lookup_lyrics
+
+        return lookup_lyrics
     raise AttributeError(f"module 'src.providers' has no attribute {name!r}")
