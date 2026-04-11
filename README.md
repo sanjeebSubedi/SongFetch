@@ -33,14 +33,18 @@ src/
   providers/
     __init__.py
     itunes.py
+    lrclib.py
     ollama.py
+    spotify.py
   types.py
   tools/
     __init__.py
     _shared.py
+    lyrics.py
     metadata.py
     search.py
     download.py
+    spotify.py
     tagging.py
 ```
 
@@ -49,10 +53,12 @@ It currently exposes these main entry points for the workflow:
 - `search_song_audio(query, limit=5)`
 - `download_song_audio(url, output_dir="downloads", audio_format="m4a")`
 - `fetch_music_metadata(song_name, artist=None, album=None, limit=5)`
+- `fetch_spotify_metadata(song_name, artist=None, album=None, limit=5)`
 - `fetch_metadata_from_search_results(user_input, search_results, limit=5)`
 - `select_metadata_match(user_input, metadata_matches)`
 - `select_download_audio_request(user_input, metadata_selection, search_results, requested_format)`
 - `parse_download_request(user_input, model="gemma4:e4b")`
+- `import_spotify_playlist_tracks(playlist_ref)`
 
 The model-powered part of the app is split by responsibility:
 
@@ -62,6 +68,12 @@ The model-powered part of the app is split by responsibility:
 `src/providers/itunes.py`
 - shared iTunes Search API access for track metadata
 
+`src/providers/spotify.py`
+- Spotify search + playlist scraping (selenium + spotify_scraper)
+
+`src/providers/lrclib.py`
+- LRCLIB client for lyrics lookup
+
 `src/agents/search_query_builder/agent.py`
 - the song request agent prompt and schema wiring
 
@@ -69,7 +81,7 @@ The model-powered part of the app is split by responsibility:
 - the metadata lookup agent that turns YouTube results into canonical `song_name` and `artist`
 
 `src/agents/metadata_selector/agent.py`
-- the metadata selector agent that chooses one canonical iTunes track match from candidates
+- the metadata selector agent that chooses one canonical metadata match from candidates
 
 `src/agents/download_selector/agent.py`
 - the download selector agent that chooses one YouTube URL and builds `download_audio` args
@@ -110,7 +122,8 @@ pip install -e .
 ```
 
 Install `ffmpeg` locally as well, since the default output format is `m4a`.
-The pipeline also uses `mutagen` to embed selected metadata tags into the downloaded file.
+The pipeline also uses `mutagen` to embed selected metadata tags into the downloaded file,
+including cover art, lyrics, genre, and track/disc numbers when provider metadata is available.
 
 To use the LLM parser, make sure Ollama is running locally and that `gemma4:31b-cloud` is available.
 
@@ -160,10 +173,19 @@ print(metadata_matches)
 For live iTunes Search API usage, you can override the storefront with `ITUNES_COUNTRY`
 or the `main.py` `--itunes-country` flag.
 
+If you want to fetch Spotify metadata (scraper-based):
+
+```python
+from src import fetch_spotify_metadata
+
+metadata_matches = fetch_spotify_metadata("Yellow", artist="Coldplay", limit=5)
+print(metadata_matches)
+```
+
 ## Run The Pipeline
 
-Run the current pipeline from natural-language request to YouTube search results and iTunes
-metadata matches:
+Run the current pipeline from natural-language request to YouTube search results, metadata
+selection (iTunes with Spotify fallback), download, lyrics, and tagging:
 
 ```bash
 .venv/bin/python main.py "download Yellow by Coldplay as m4a" --search-limit 5 --metadata-limit 5
@@ -175,7 +197,26 @@ The JSON output currently includes:
 - `search_results`
 - `metadata_lookup_request`
 - `metadata_matches`
+- `metadata_source`
 - `selected_metadata`
 - `selected_download`
 - `download_result`
+- `lyrics_result`
 - `tagging_result`
+
+## Spotify Playlist Runs
+
+You can process a public Spotify playlist end-to-end:
+
+```bash
+.venv/bin/python main.py --spotify-playlist "https://open.spotify.com/playlist/PLAYLIST_ID"
+```
+
+This runs the same pipeline sequentially for each track and aggregates per-track results.
+
+## Notes
+
+- YouTube search/download uses Firefox cookies when available. You can override with:
+  `YTDLP_COOKIES_BROWSER`, `YTDLP_COOKIES_PROFILE`.
+- Some videos require a JS runtime for YouTube challenge solving. The default is `node`
+  with `YTDLP_REMOTE_COMPONENTS=ejs:github`.
