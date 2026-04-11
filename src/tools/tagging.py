@@ -63,6 +63,12 @@ def _tag_mp4(
         tags["\xa9ART"] = [metadata_selection.artist]
     if metadata_selection.album:
         tags["\xa9alb"] = [metadata_selection.album]
+    if getattr(metadata_selection, "genre", None):
+        tags["\xa9gen"] = [metadata_selection.genre]
+    if getattr(metadata_selection, "track_number", None):
+        tags["trkn"] = [(metadata_selection.track_number, 0)]
+    if getattr(metadata_selection, "disc_number", None):
+        tags["disk"] = [(metadata_selection.disc_number, 0)]
     if lyrics:
         tags["\xa9lyr"] = [lyrics]
     if artwork is not None:
@@ -93,6 +99,12 @@ def _tag_mp3(
         audio["artist"] = metadata_selection.artist
     if metadata_selection.album:
         audio["album"] = metadata_selection.album
+    if getattr(metadata_selection, "genre", None):
+        audio["genre"] = metadata_selection.genre
+    if getattr(metadata_selection, "track_number", None):
+        audio["tracknumber"] = str(metadata_selection.track_number)
+    if getattr(metadata_selection, "disc_number", None):
+        audio["discnumber"] = str(metadata_selection.disc_number)
     audio.save()
 
     if artwork is not None or lyrics:

@@ -26,14 +26,12 @@ def select_metadata_match(
     if not metadata_matches:
         raise ValueError("metadata_matches must not be empty")
 
-    candidates_with_track_identity = [
-        match
-        for match in metadata_matches
-        if match.get("track_id") and match.get("collection_id")
+    candidates_with_identity = [
+        match for match in metadata_matches if match.get("provider_track_id")
     ]
-    if not candidates_with_track_identity:
+    if not candidates_with_identity:
         raise ValueError(
-            "metadata_matches must include at least one candidate with track_id and collection_id"
+            "metadata_matches must include at least one candidate with provider_track_id"
         )
 
     config = OllamaConfig(
@@ -42,7 +40,7 @@ def select_metadata_match(
         temperature=temperature,
     )
     return generate_structured_response(
-        user_input=_build_user_prompt(user_input, candidates_with_track_identity),
+        user_input=_build_user_prompt(user_input, candidates_with_identity),
         response_model=MetadataSelection,
         system_prompt=_build_system_prompt(),
         config=config,
@@ -62,21 +60,22 @@ def _build_user_prompt(
 ) -> str:
     payload = {
         "original_user_request": user_input.strip(),
-        "itunes_candidates": [
+        "metadata_candidates": [
             {
                 "rank": index,
-                "track_id": match.get("track_id"),
-                "collection_id": match.get("collection_id"),
+                "provider": match.get("provider"),
+                "provider_track_id": match.get("provider_track_id"),
+                "provider_collection_id": match.get("provider_collection_id"),
                 "title": match.get("title"),
                 "artist": match.get("artist"),
                 "album": match.get("album"),
                 "release_date": match.get("release_date"),
                 "duration_ms": match.get("duration_ms"),
-                "track_explicitness": match.get("track_explicitness"),
+                "explicitness": match.get("explicitness"),
                 "is_explicit": match.get("is_explicit"),
                 "track_number": match.get("track_number"),
                 "disc_number": match.get("disc_number"),
-                "primary_genre_name": match.get("primary_genre_name"),
+                "genre": match.get("genre"),
                 "artwork_url": match.get("artwork_url"),
                 "preview_url": match.get("preview_url"),
                 "track_view_url": match.get("track_view_url"),

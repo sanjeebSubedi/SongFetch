@@ -284,8 +284,9 @@ class MetadataRequestBuilderTests(unittest.TestCase):
 class MetadataSelectorTests(unittest.TestCase):
     def test_select_metadata_match_returns_model(self) -> None:
         selection = MetadataSelection(
-            track_id=123,
-            collection_id=456,
+            provider="itunes",
+            provider_track_id="123",
+            provider_collection_id="456",
             title="Yellow",
             artist="Coldplay",
             album="Parachutes",
@@ -296,18 +297,19 @@ class MetadataSelectorTests(unittest.TestCase):
         )
         metadata_matches = [
             {
-                "track_id": 123,
-                "collection_id": 456,
+                "provider": "itunes",
+                "provider_track_id": "123",
+                "provider_collection_id": "456",
                 "title": "Yellow",
                 "artist": "Coldplay",
                 "album": "Parachutes",
                 "release_date": "2000-06-26T07:00:00Z",
                 "duration_ms": 266000,
-                "track_explicitness": "explicit",
+                "explicitness": "explicit",
                 "is_explicit": True,
                 "track_number": 5,
                 "disc_number": 1,
-                "primary_genre_name": "Alternative",
+                "genre": "Alternative",
                 "artwork_url": "https://example.com/art.jpg",
                 "preview_url": "https://example.com/preview.m4a",
                 "track_view_url": "https://music.apple.com/us/song/yellow/123",
@@ -329,8 +331,9 @@ class MetadataSelectorTests(unittest.TestCase):
 
     def test_select_metadata_match_passes_metadata_candidates_to_model(self) -> None:
         selection = MetadataSelection(
-            track_id=123,
-            collection_id=456,
+            provider="itunes",
+            provider_track_id="123",
+            provider_collection_id="456",
             title="Yellow",
             artist="Coldplay",
             album="Parachutes",
@@ -341,22 +344,23 @@ class MetadataSelectorTests(unittest.TestCase):
         )
         metadata_matches = [
             {
-                "track_id": 123,
-                "collection_id": 456,
+                "provider": "spotify",
+                "provider_track_id": "spotify-track-1",
+                "provider_collection_id": "spotify-album-1",
                 "title": "Yellow",
                 "artist": "Coldplay",
                 "album": "Parachutes",
                 "release_date": "2000-06-26T07:00:00Z",
                 "duration_ms": 266000,
-                "track_explicitness": "explicit",
+                "explicitness": "explicit",
                 "is_explicit": True,
                 "track_number": 5,
                 "disc_number": 1,
-                "primary_genre_name": "Alternative",
+                "genre": "Alternative",
                 "artwork_url": "https://example.com/art.jpg",
-                "preview_url": "https://example.com/preview.m4a",
-                "track_view_url": "https://music.apple.com/us/song/yellow/123",
-                "collection_view_url": "https://music.apple.com/us/album/parachutes/456",
+                "preview_url": None,
+                "track_view_url": "https://open.spotify.com/track/spotify-track-1",
+                "collection_view_url": "https://open.spotify.com/album/spotify-album-1",
             }
         ]
 
@@ -376,13 +380,15 @@ class MetadataSelectorTests(unittest.TestCase):
         payload = json.loads(kwargs["user_input"])
         self.assertEqual(payload["original_user_request"], "download Yellow by Coldplay")
         self.assertEqual(
-            payload["itunes_candidates"][0]["collection_id"],
-            456,
+            payload["metadata_candidates"][0]["provider_collection_id"],
+            "spotify-album-1",
         )
         self.assertEqual(
-            payload["itunes_candidates"][0]["artwork_url"],
+            payload["metadata_candidates"][0]["artwork_url"],
             "https://example.com/art.jpg",
         )
+        self.assertEqual(payload["metadata_candidates"][0]["provider"], "spotify")
+        self.assertEqual(payload["metadata_candidates"][0]["genre"], "Alternative")
         self.assertIs(kwargs["response_model"], MetadataSelection)
         self.assertIn("metadata selection assistant", kwargs["system_prompt"].lower())
         self.assertEqual(kwargs["config"].host, "http://localhost:11434")
@@ -392,21 +398,22 @@ class MetadataSelectorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             select_metadata_match("download Yellow by Coldplay", [])
 
-    def test_select_metadata_match_requires_track_and_collection_id(self) -> None:
+    def test_select_metadata_match_requires_provider_track_id(self) -> None:
         metadata_matches = [
             {
-                "track_id": 123,
-                "collection_id": None,
+                "provider": "spotify",
+                "provider_track_id": None,
+                "provider_collection_id": None,
                 "title": "Yellow",
                 "artist": "Coldplay",
                 "album": "Parachutes",
                 "release_date": "2000-06-26T07:00:00Z",
                 "duration_ms": 266000,
-                "track_explicitness": "explicit",
+                "explicitness": "explicit",
                 "is_explicit": True,
                 "track_number": 5,
                 "disc_number": 1,
-                "primary_genre_name": "Alternative",
+                "genre": "Alternative",
                 "artwork_url": "https://example.com/art.jpg",
                 "preview_url": "https://example.com/preview.m4a",
                 "track_view_url": "https://music.apple.com/us/song/yellow/123",
@@ -420,8 +427,9 @@ class MetadataSelectorTests(unittest.TestCase):
 class DownloadSelectorTests(unittest.TestCase):
     def test_select_download_audio_request_returns_model(self) -> None:
         metadata_selection = MetadataSelection(
-            track_id=123,
-            collection_id=456,
+            provider="itunes",
+            provider_track_id="123",
+            provider_collection_id="456",
             title="Yellow",
             artist="Coldplay",
             album="Parachutes",
@@ -470,8 +478,9 @@ class DownloadSelectorTests(unittest.TestCase):
 
     def test_select_download_audio_request_passes_payload(self) -> None:
         metadata_selection = MetadataSelection(
-            track_id=123,
-            collection_id=456,
+            provider="spotify",
+            provider_track_id="spotify-track-1",
+            provider_collection_id="spotify-album-1",
             title="Yellow",
             artist="Coldplay",
             album="Parachutes",
@@ -526,9 +535,10 @@ class DownloadSelectorTests(unittest.TestCase):
         )
         self.assertEqual(payload["requested_format"], "m4a")
         self.assertEqual(
-            payload["reference_metadata"]["track_id"],
-            123,
+            payload["reference_metadata"]["provider_track_id"],
+            "spotify-track-1",
         )
+        self.assertEqual(payload["reference_metadata"]["provider"], "spotify")
         self.assertEqual(
             payload["reference_metadata"]["artwork_url"],
             "https://example.com/art.jpg",
@@ -546,8 +556,9 @@ class DownloadSelectorTests(unittest.TestCase):
 
     def test_select_download_audio_request_requires_candidates(self) -> None:
         metadata_selection = MetadataSelection(
-            track_id=123,
-            collection_id=456,
+            provider="itunes",
+            provider_track_id="123",
+            provider_collection_id="456",
             title="Yellow",
             artist="Coldplay",
             album="Parachutes",

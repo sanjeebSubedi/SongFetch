@@ -134,7 +134,7 @@ def _request_json(
         if allow_not_found and exc.code == 404:
             return None
         return None
-    except (error.URLError, json.JSONDecodeError):
+    except (TimeoutError, OSError, error.URLError, json.JSONDecodeError):
         return None
 
 

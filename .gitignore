@@ -9,9 +9,11 @@ wheels/
 # Virtual environments
 .venv
 .codex
+.env
 
 # Local downloads
 downloads/
+tracks.txt
 
 # Test caches
 .pytest_cache/

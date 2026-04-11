@@ -17,15 +17,15 @@ For EACH candidate:
 1. Compute duration difference:
    diff = abs(video.duration_seconds - reference_metadata.duration_seconds)
 
-2. Apply HARD FILTERS:
-   - If diff > 20 seconds → REJECT immediately
-   - If title contains: Live, Cover, Remix, Reaction, Slowed, Reverb → REJECT (unless explicitly requested)
+2. Apply QUALITY FILTERS:
+   - If title contains: Live, Cover, Remix, Reaction, Slowed, Reverb → REJECT if better options exist
+   - If diff > 20 seconds, treat it as LOW CONFIDENCE, not an automatic refusal
 
-After this step, you MUST have a reduced candidate set.
+After this step, you MUST rank the candidates from best to worst.
 </step_1_filtering>
 
 <step_2_ranking>
-From the remaining candidates:
+From the ranked candidates:
 
 1. STRONGLY PREFER:
    - "Audio", "Official Audio", "Topic"
@@ -45,10 +45,19 @@ View count is only a TIEBREAKER.
 - Select EXACTLY ONE candidate.
 - The chosen candidate MUST:
   - be within ±10 seconds if possible
-  - have the SMALLEST duration difference among valid options
+  - have the SMALLEST duration difference among strong options when available
 
 If multiple candidates are similar:
 → choose the one labeled "Audio" or "Lyrics"
+
+LAST RESORT RULE:
+- If NO candidate is within 20 seconds, you MUST still choose the most reasonable fallback.
+- In that situation, prefer:
+  1. the smallest duration difference
+  2. audio/lyrics/topic style uploads
+  3. stronger uploader credibility
+  4. higher view count only as a tie-breaker
+- Do not refuse selection just because all candidates are imperfect.
 </step_3_decision>
 
 <step_4_output>

@@ -1,11 +1,17 @@
+from src.env import load_env_file
+
+load_env_file()
+
 __all__ = [
     "search_song_audio",
     "download_song_audio",
     "embed_selected_metadata",
     "fetch_music_metadata",
+    "fetch_spotify_metadata",
     "fetch_metadata_from_request",
     "fetch_metadata_from_search_results",
     "fetch_lyrics",
+    "import_spotify_playlist_tracks",
     "build_song_request",
     "parse_download_request",
     "build_metadata_lookup_request",
@@ -17,9 +23,11 @@ __all__ = [
     "DownloadAudioSelection",
     "TagMetadata",
     "LyricsResult",
+    "PlaylistTrack",
     "OllamaConfig",
     "ITunesConfig",
     "LRCLibConfig",
+    "SpotifyConfig",
 ]
 
 
@@ -40,6 +48,10 @@ def __getattr__(name: str):
         from src.tools.metadata import fetch_music_metadata
 
         return fetch_music_metadata
+    if name == "fetch_spotify_metadata":
+        from src.tools.metadata import fetch_spotify_metadata
+
+        return fetch_spotify_metadata
     if name == "fetch_metadata_from_request":
         from src.tools.metadata import fetch_metadata_from_request
 
@@ -52,6 +64,10 @@ def __getattr__(name: str):
         from src.tools.lyrics import fetch_lyrics
 
         return fetch_lyrics
+    if name == "import_spotify_playlist_tracks":
+        from src.tools.spotify import import_spotify_playlist_tracks
+
+        return import_spotify_playlist_tracks
     if name == "build_song_request":
         from src.agents.search_query_builder.agent import build_song_request
 
@@ -100,6 +116,10 @@ def __getattr__(name: str):
         from src.types import LyricsResult
 
         return LyricsResult
+    if name == "PlaylistTrack":
+        from src.types import PlaylistTrack
+
+        return PlaylistTrack
     if name == "OllamaConfig":
         from src.providers.ollama import OllamaConfig
 
@@ -112,4 +132,8 @@ def __getattr__(name: str):
         from src.providers.lrclib import LRCLibConfig
 
         return LRCLibConfig
+    if name == "SpotifyConfig":
+        from src.providers.spotify import SpotifyConfig
+
+        return SpotifyConfig
     raise AttributeError(f"module 'src' has no attribute {name!r}")

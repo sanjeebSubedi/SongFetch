@@ -8,16 +8,21 @@ from src import (
     LRCLibConfig,
     LyricsResult,
     MetadataLookupRequest,
+    PlaylistTrack,
     SongRequest,
+    SpotifyConfig,
     TagMetadata,
     fetch_lyrics,
     fetch_metadata_from_request,
     fetch_metadata_from_search_results,
     fetch_music_metadata,
+    fetch_spotify_metadata,
+    import_spotify_playlist_tracks,
 )
-from src.providers import itunes, lrclib
+from src.providers import itunes, lrclib, spotify
 from src.tools import metadata as metadata_tool
 from src.tools import lyrics as lyrics_tool
+from src.tools import spotify as spotify_tool
 
 
 class FakeResponse:
@@ -33,6 +38,12 @@ class FakeResponse:
 
     def __exit__(self, exc_type, exc, tb):
         return False
+
+
+class FakeHeaders(dict):
+    def get_content_type(self):
+        value = self.get("Content-Type", "application/json")
+        return value.split(";", maxsplit=1)[0]
 
 
 class ITunesProviderTests(unittest.TestCase):
@@ -155,6 +166,153 @@ class LRCLibProviderTests(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    def test_lookup_lyrics_returns_none_on_timeout(self) -> None:
+        config = LRCLibConfig(base_url="https://lrclib.net/api")
+
+        with patch.object(
+            lrclib.request,
+            "urlopen",
+            side_effect=TimeoutError("timed out"),
+        ):
+            result = lrclib.lookup_lyrics("Yellow", artist="Coldplay", config=config)
+
+        self.assertIsNone(result)
+
+
+class SpotifyProviderTests(unittest.TestCase):
+    def test_search_tracks_normalizes_scraped_track_results(self) -> None:
+        class FakeSpotifyClient:
+            def get_track_info(self, _url: str) -> dict[str, object]:
+                return {
+                    "id": "spotify-track-1",
+                    "name": "Yellow",
+                    "artists": [{"name": "Coldplay"}],
+                    "album": {
+                        "id": "spotify-album-1",
+                        "name": "Parachutes",
+                        "release_date": "2000-07-10",
+                        "images": [
+                            {"height": 300, "url": "https://example.com/small.jpg"},
+                            {"height": 640, "url": "https://example.com/large.jpg"},
+                        ],
+                        "external_urls": {
+                            "spotify": "https://open.spotify.com/album/spotify-album-1"
+                        },
+                    },
+                    "duration_ms": 266000,
+                    "explicit": False,
+                    "track_number": 5,
+                    "disc_number": 1,
+                    "preview_url": "https://example.com/preview.mp3",
+                    "external_urls": {
+                        "spotify": "https://open.spotify.com/track/spotify-track-1"
+                    },
+                }
+
+            def close(self) -> None:
+                return None
+
+        config = SpotifyConfig(browser_name="chrome", headless=True)
+
+        with patch.object(
+            spotify,
+            "_discover_track_urls",
+            return_value=["https://open.spotify.com/track/spotify-track-1"],
+        ):
+            with patch.object(
+                spotify,
+                "_build_track_client",
+                return_value=FakeSpotifyClient(),
+            ):
+                result = spotify.search_tracks(
+                    "Yellow",
+                    artist="Coldplay",
+                    limit=3,
+                    config=config,
+                )
+
+        self.assertEqual(
+            result,
+            [
+                {
+                    "provider": "spotify",
+                    "provider_track_id": "spotify-track-1",
+                    "provider_collection_id": "spotify-album-1",
+                    "title": "Yellow",
+                    "artist": "Coldplay",
+                    "album": "Parachutes",
+                    "release_date": "2000-07-10",
+                    "duration_ms": 266000,
+                    "explicitness": "notExplicit",
+                    "is_explicit": False,
+                    "track_number": 5,
+                    "disc_number": 1,
+                    "genre": None,
+                    "artwork_url": "https://example.com/large.jpg",
+                    "preview_url": "https://example.com/preview.mp3",
+                    "track_view_url": "https://open.spotify.com/track/spotify-track-1",
+                    "collection_view_url": "https://open.spotify.com/album/spotify-album-1",
+                }
+            ],
+        )
+
+    def test_search_tracks_returns_empty_when_browser_type_is_not_supported(self) -> None:
+        result = spotify.search_tracks(
+            "Yellow",
+            artist="Coldplay",
+            config=SpotifyConfig(browser_type="requests"),
+        )
+        self.assertEqual(result, [])
+
+    def test_search_tracks_returns_empty_when_discovery_raises(self) -> None:
+        with patch.object(
+            spotify,
+            "_discover_track_urls",
+            side_effect=RuntimeError("browser crashed"),
+        ):
+            result = spotify.search_tracks("Yellow", artist="Coldplay", limit=3)
+
+        self.assertEqual(result, [])
+
+    def test_fetch_public_playlist_preserves_duplicates_and_order(self) -> None:
+        config = SpotifyConfig(browser_name="chrome", headless=True)
+        rows = [
+            {
+                "position": 1,
+                "title": "Song One",
+                "artists": ["Artist One"],
+                "album": "Album One",
+                "track_url": "/track/track-1",
+                "album_url": "/album/album-1",
+            },
+            {
+                "position": 2,
+                "title": "Song One",
+                "artists": ["Artist One"],
+                "album": "Album One",
+                "track_url": "/track/track-1",
+                "album_url": "/album/album-1",
+            },
+        ]
+
+        with patch.object(
+            spotify,
+            "_scrape_playlist_rows",
+            return_value=("Road Trip", rows),
+        ):
+            result = spotify.fetch_public_playlist(
+                "https://open.spotify.com/playlist/playlist-1",
+                config=config,
+            )
+
+        self.assertEqual(result["playlist_id"], "playlist-1")
+        self.assertEqual(result["name"], "Road Trip")
+        self.assertEqual(len(result["tracks"]), 2)
+        self.assertEqual(result["tracks"][0].title, "Song One")
+        self.assertEqual(result["tracks"][1].title, "Song One")
+        self.assertEqual(result["tracks"][0].provider_track_id, "track-1")
+        self.assertEqual(result["tracks"][1].provider_track_id, "track-1")
+
 
 class MetadataToolTests(unittest.TestCase):
     def test_fetch_music_metadata_normalizes_itunes_results(self) -> None:
@@ -187,18 +345,19 @@ class MetadataToolTests(unittest.TestCase):
             result,
             [
                 {
-                    "track_id": 123,
-                    "collection_id": 456,
+                    "provider": "itunes",
+                    "provider_track_id": "123",
+                    "provider_collection_id": "456",
                     "title": "Yellow",
                     "artist": "Coldplay",
                     "album": "Parachutes",
                     "release_date": "2000-06-26T07:00:00Z",
                     "duration_ms": 266000,
-                    "track_explicitness": "notExplicit",
+                    "explicitness": "notExplicit",
                     "is_explicit": False,
                     "track_number": 5,
                     "disc_number": 1,
-                    "primary_genre_name": "Alternative",
+                    "genre": "Alternative",
                     "artwork_url": "https://example.com/art.jpg",
                     "preview_url": "https://example.com/preview.m4a",
                     "track_view_url": "https://music.apple.com/us/song/yellow/123",
@@ -206,6 +365,35 @@ class MetadataToolTests(unittest.TestCase):
                 }
             ],
         )
+
+    def test_fetch_spotify_metadata_uses_spotify_search(self) -> None:
+        spotify_matches = [
+            {
+                "provider": "spotify",
+                "provider_track_id": "spotify-track-1",
+                "provider_collection_id": "spotify-album-1",
+                "title": "Yellow",
+                "artist": "Coldplay",
+                "album": "Parachutes",
+                "release_date": "2000-07-10",
+                "duration_ms": 266000,
+                "explicitness": "notExplicit",
+                "is_explicit": False,
+                "track_number": 5,
+                "disc_number": 1,
+                    "genre": None,
+                "artwork_url": "https://example.com/large.jpg",
+                "preview_url": None,
+                "track_view_url": "https://open.spotify.com/track/spotify-track-1",
+                "collection_view_url": "https://open.spotify.com/album/spotify-album-1",
+            }
+        ]
+
+        with patch.object(metadata_tool, "search_spotify_tracks", return_value=spotify_matches) as mock_search:
+            result = fetch_spotify_metadata("Yellow", artist="Coldplay", limit=2)
+
+        self.assertEqual(result, spotify_matches)
+        mock_search.assert_called_once()
 
     def test_fetch_metadata_from_request_uses_song_request_fields(self) -> None:
         song_request = SongRequest(
@@ -308,6 +496,32 @@ class MetadataToolTests(unittest.TestCase):
                 artwork_url=None,
             ),
         )
+
+    def test_import_spotify_playlist_tracks_returns_normalized_tracks(self) -> None:
+        playlist = {
+            "playlist_id": "playlist-1",
+            "name": "Road Trip",
+            "spotify_url": "https://open.spotify.com/playlist/playlist-1",
+            "tracks": [
+                PlaylistTrack(
+                    provider="spotify",
+                    provider_track_id="track-1",
+                    title="Song One",
+                    artist="Artist One",
+                    album="Album One",
+                    artwork_url="https://example.com/1.jpg",
+                    spotify_track_url="https://open.spotify.com/track/track-1",
+                )
+            ],
+        }
+
+        with patch.object(spotify_tool, "fetch_public_playlist", return_value=playlist):
+            result = import_spotify_playlist_tracks("playlist-1")
+
+        self.assertEqual(result["playlist_id"], "playlist-1")
+        self.assertEqual(result["name"], "Road Trip")
+        self.assertEqual(len(result["tracks"]), 1)
+        self.assertEqual(result["tracks"][0].title, "Song One")
 
     def test_fetch_lyrics_uses_tag_metadata(self) -> None:
         metadata = TagMetadata(

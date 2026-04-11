@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 
 class SearchResult(TypedDict):
@@ -20,21 +20,23 @@ class DownloadResult(TypedDict):
     source_url: str
     output_path: str
     audio_format: str
+    skipped: NotRequired[bool]
 
 
 class MusicMetadataResult(TypedDict):
-    track_id: int
-    collection_id: int | None
+    provider: str
+    provider_track_id: str
+    provider_collection_id: str | None
     title: str | None
     artist: str | None
     album: str | None
     release_date: str | None
     duration_ms: int | None
-    track_explicitness: str | None
+    explicitness: str | None
     is_explicit: bool | None
     track_number: int | None
     disc_number: int | None
-    primary_genre_name: str | None
+    genre: str | None
     artwork_url: str | None
     preview_url: str | None
     track_view_url: str | None
@@ -46,6 +48,9 @@ class TagMetadata:
     title: str
     artist: str | None = None
     album: str | None = None
+    genre: str | None = None
+    track_number: int | None = None
+    disc_number: int | None = None
     artwork_url: str | None = None
 
 
@@ -56,3 +61,14 @@ class LyricsResult:
     found: bool = True
     synced_available: bool = False
     synced_used: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class PlaylistTrack:
+    provider: str
+    provider_track_id: str
+    title: str
+    artist: str
+    album: str | None = None
+    artwork_url: str | None = None
+    spotify_track_url: str | None = None

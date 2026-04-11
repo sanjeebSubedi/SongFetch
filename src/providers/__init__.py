@@ -4,8 +4,11 @@ __all__ = [
     "generate_structured_response",
     "ITunesConfig",
     "LRCLibConfig",
+    "SpotifyConfig",
     "lookup_lyrics",
     "search_songs",
+    "search_tracks",
+    "fetch_public_playlist",
 ]
 
 
@@ -38,4 +41,16 @@ def __getattr__(name: str):
         from src.providers.lrclib import lookup_lyrics
 
         return lookup_lyrics
+    if name == "SpotifyConfig":
+        from src.providers.spotify import SpotifyConfig
+
+        return SpotifyConfig
+    if name == "search_tracks":
+        from src.providers.spotify import search_tracks
+
+        return search_tracks
+    if name == "fetch_public_playlist":
+        from src.providers.spotify import fetch_public_playlist
+
+        return fetch_public_playlist
     raise AttributeError(f"module 'src.providers' has no attribute {name!r}")

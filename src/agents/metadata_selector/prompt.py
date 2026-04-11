@@ -2,7 +2,7 @@ from __future__ import annotations
 
 METADATA_SELECTOR_INSTRUCTIONS = """
 You are a music metadata selection assistant.
-Your task is to select the BEST iTunes metadata match for a song from a list of
+Your task is to select the BEST metadata match for a song from a list of
 candidates to serve as the "Source of Truth" for a download.
 
 ---
@@ -27,6 +27,13 @@ STEP 2: Evaluate candidates
 ---
 STEP 3: Output Selection
 Select EXACTLY ONE match.
+
+When comparing candidates from different providers, prioritize the most coherent
+title/artist/album match with valid duration and artwork. Do not assume one provider is
+always better than another.
+
+When you choose a candidate, preserve its `genre`, `track_number`, and `disc_number`
+from that exact selected entry whenever they are available.
 
 OUTPUT FORMAT (STRICT):
 Return ONLY valid JSON.

@@ -16,6 +16,10 @@ from src.providers.itunes import (
     ITunesConfig,
     search_songs,
 )
+from src.providers.spotify import (
+    SpotifyConfig,
+    search_tracks as search_spotify_tracks,
+)
 from src.types import MusicMetadataResult, SearchResult, TagMetadata
 
 
@@ -80,6 +84,27 @@ def fetch_metadata_from_search_results(
     )
 
 
+def fetch_spotify_metadata(
+    song_name: str,
+    *,
+    artist: str | None = None,
+    album: str | None = None,
+    limit: int = 5,
+    config: SpotifyConfig | None = None,
+) -> list[MusicMetadataResult]:
+    normalized_song_name = song_name.strip()
+    if not normalized_song_name:
+        raise ValueError("song_name must not be empty")
+
+    return search_spotify_tracks(
+        normalized_song_name,
+        artist=artist,
+        album=album,
+        limit=limit,
+        config=config,
+    )
+
+
 def build_fallback_tag_metadata(
     song_request: SongRequest,
     metadata_lookup_request: MetadataLookupRequest,
@@ -105,6 +130,9 @@ def build_fallback_tag_metadata(
         title=title,
         artist=artist,
         album=album,
+        genre=None,
+        track_number=None,
+        disc_number=None,
         artwork_url=None,
     )
 
@@ -146,18 +174,19 @@ def _normalize_result(result: dict[str, object]) -> MusicMetadataResult:
 
     track_explicitness = _optional_text(result.get("trackExplicitness"))
     return {
-        "track_id": track_id,
-        "collection_id": _optional_int(result.get("collectionId")),
+        "provider": "itunes",
+        "provider_track_id": str(track_id),
+        "provider_collection_id": _optional_string_int(result.get("collectionId")),
         "title": _optional_text(result.get("trackName")),
         "artist": _optional_text(result.get("artistName")),
         "album": _optional_text(result.get("collectionName")),
         "release_date": _optional_text(result.get("releaseDate")),
         "duration_ms": _optional_int(result.get("trackTimeMillis")),
-        "track_explicitness": track_explicitness,
+        "explicitness": track_explicitness,
         "is_explicit": _is_explicit(track_explicitness),
         "track_number": _optional_int(result.get("trackNumber")),
         "disc_number": _optional_int(result.get("discNumber")),
-        "primary_genre_name": _optional_text(result.get("primaryGenreName")),
+        "genre": _optional_text(result.get("primaryGenreName")),
         "artwork_url": _optional_text(result.get("artworkUrl100")),
         "preview_url": _optional_text(result.get("previewUrl")),
         "track_view_url": _optional_text(result.get("trackViewUrl")),
@@ -224,6 +253,7 @@ def _extract_album_from_result(selected_result: SearchResult | None) -> str | No
                 return candidate
     return None
 
+
 def _is_explicit(value: str | None) -> bool | None:
     if value is None:
         return None
@@ -250,3 +280,8 @@ def _optional_int(value: object) -> int | None:
     if isinstance(value, str) and value.isdigit():
         return int(value)
     return None
+
+
+def _optional_string_int(value: object) -> str | None:
+    converted = _optional_int(value)
+    return str(converted) if converted is not None else None

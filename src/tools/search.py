@@ -6,7 +6,11 @@ from src.providers.ollama import (
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_OLLAMA_TEMPERATURE,
 )
-from src.tools._shared import get_yt_dlp
+from src.tools._shared import (
+    build_cookies_from_browser,
+    build_yt_dlp_runtime_options,
+    get_yt_dlp,
+)
 from src.types import SearchResult
 
 
@@ -21,7 +25,12 @@ def search_song_audio(query: str, limit: int = 5) -> list[SearchResult]:
         "no_warnings": True,
         "skip_download": True,
         "noplaylist": True,
+        "ignoreerrors": True,
     }
+    cookies_from_browser = build_cookies_from_browser()
+    if cookies_from_browser is not None:
+        search_options["cookiesfrombrowser"] = cookies_from_browser
+    search_options.update(build_yt_dlp_runtime_options())
 
     yt_dlp = get_yt_dlp()
     with yt_dlp.YoutubeDL(search_options) as ydl:

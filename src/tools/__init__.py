@@ -4,9 +4,11 @@ __all__ = [
     "download_song_audio",
     "embed_selected_metadata",
     "fetch_music_metadata",
+    "fetch_spotify_metadata",
     "fetch_metadata_from_request",
     "fetch_metadata_from_search_results",
     "fetch_lyrics",
+    "import_spotify_playlist_tracks",
 ]
 
 
@@ -31,6 +33,10 @@ def __getattr__(name: str):
         from src.tools.metadata import fetch_music_metadata
 
         return fetch_music_metadata
+    if name == "fetch_spotify_metadata":
+        from src.tools.metadata import fetch_spotify_metadata
+
+        return fetch_spotify_metadata
     if name == "fetch_metadata_from_request":
         from src.tools.metadata import fetch_metadata_from_request
 
@@ -43,4 +49,8 @@ def __getattr__(name: str):
         from src.tools.lyrics import fetch_lyrics
 
         return fetch_lyrics
+    if name == "import_spotify_playlist_tracks":
+        from src.tools.spotify import import_spotify_playlist_tracks
+
+        return import_spotify_playlist_tracks
     raise AttributeError(f"module 'src.tools' has no attribute {name!r}")
