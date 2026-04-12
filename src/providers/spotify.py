@@ -21,15 +21,11 @@ DEFAULT_SPOTIFY_HEADLESS = os.environ.get("SPOTIFY_HEADLESS", "true").lower() !=
 DEFAULT_SPOTIFY_USE_WEBDRIVER_MANAGER = (
     os.environ.get("SPOTIFY_USE_WEBDRIVER_MANAGER", "true").lower() != "false"
 )
-DEFAULT_SPOTIFY_TIMEOUT_SECONDS = float(
-    os.environ.get("SPOTIFY_TIMEOUT_SECONDS", "10")
-)
+DEFAULT_SPOTIFY_TIMEOUT_SECONDS = float(os.environ.get("SPOTIFY_TIMEOUT_SECONDS", "10"))
 DEFAULT_SPOTIFY_SCROLL_PAUSE_SECONDS = float(
     os.environ.get("SPOTIFY_SCROLL_PAUSE_SECONDS", "1.2")
 )
-DEFAULT_SPOTIFY_MAX_IDLE_SCROLLS = int(
-    os.environ.get("SPOTIFY_MAX_IDLE_SCROLLS", "12")
-)
+DEFAULT_SPOTIFY_MAX_IDLE_SCROLLS = int(os.environ.get("SPOTIFY_MAX_IDLE_SCROLLS", "12"))
 _SPOTIFY_BASE_URL = "https://open.spotify.com"
 _MAX_SEARCH_MULTIPLIER = 3
 
@@ -361,9 +357,8 @@ def _normalize_track(
             entity_type="album",
         ),
     )
-    album_url = (
-        _external_spotify_url(album_dict.get("external_urls"))
-        or (_album_url(album_id) if album_id else None)
+    album_url = _external_spotify_url(album_dict.get("external_urls")) or (
+        _album_url(album_id) if album_id else None
     )
     normalized_track_url = (
         _external_spotify_url(raw_track.get("external_urls"))
@@ -384,7 +379,9 @@ def _normalize_track(
         "explicitness": (
             "explicit"
             if explicit is True
-            else "notExplicit" if explicit is False else None
+            else "notExplicit"
+            if explicit is False
+            else None
         ),
         "is_explicit": explicit if isinstance(explicit, bool) else None,
         "track_number": _optional_int(raw_track.get("track_number")),
@@ -532,7 +529,9 @@ def _wait_for_track_rows(driver, *, timeout_seconds: float) -> None:
 
     wait_seconds = max(int(timeout_seconds), 5)
     WebDriverWait(driver, wait_seconds).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="tracklist-row"]'))
+        EC.presence_of_element_located(
+            (By.CSS_SELECTOR, '[data-testid="tracklist-row"]')
+        )
     )
 
 
@@ -630,9 +629,9 @@ def _largest_image_url(value: object) -> str | None:
         return None
     sorted_images = sorted(
         images,
-        key=lambda item: item.get("height")
-        if isinstance(item.get("height"), int)
-        else 0,
+        key=lambda item: (
+            item.get("height") if isinstance(item.get("height"), int) else 0
+        ),
         reverse=True,
     )
     return _optional_text(sorted_images[0].get("url"))
@@ -649,5 +648,3 @@ def _fallback_playlist_track_id(
         return f"{playlist_id}-{position}"
     normalized = re.sub(r"[^a-z0-9]+", "-", f"{artist}-{title}".lower()).strip("-")
     return normalized or None
-
-
