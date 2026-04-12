@@ -17,3 +17,4 @@ tracks.txt
 
 # Test caches
 .pytest_cache/
+.ruff_cache/
