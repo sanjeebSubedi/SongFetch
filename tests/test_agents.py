@@ -32,7 +32,9 @@ class FakeClient:
 
     def chat(self, **kwargs):
         type(self).last_kwargs = kwargs
-        return SimpleNamespace(message=SimpleNamespace(content=type(self).response_content))
+        return SimpleNamespace(
+            message=SimpleNamespace(content=type(self).response_content)
+        )
 
 
 class OllamaRuntimeTests(unittest.TestCase):
@@ -71,16 +73,24 @@ class OllamaRuntimeTests(unittest.TestCase):
 
         self.assertIsInstance(result, SongRequest)
         self.assertEqual(FakeClient.last_kwargs["model"], "gemma4:e4b")
-        self.assertEqual(FakeClient.last_kwargs["format"], SongRequest.model_json_schema())
+        self.assertEqual(
+            FakeClient.last_kwargs["format"], SongRequest.model_json_schema()
+        )
         self.assertEqual(FakeClient.last_kwargs["options"], {"temperature": 0.25})
-        self.assertEqual(FakeClient.last_kwargs["messages"][0]["content"], "test prompt")
+        self.assertEqual(
+            FakeClient.last_kwargs["messages"][0]["content"], "test prompt"
+        )
         self.assertEqual(
             FakeClient.last_kwargs["messages"][1]["content"],
             "download Yellow by Coldplay",
         )
 
-    def test_generate_structured_response_surfaces_validation_debug_details(self) -> None:
-        FakeClient.response_content = '{"song_name":"Yellow","artist":"Coldplay","format":"aac"}'
+    def test_generate_structured_response_surfaces_validation_debug_details(
+        self,
+    ) -> None:
+        FakeClient.response_content = (
+            '{"song_name":"Yellow","artist":"Coldplay","format":"aac"}'
+        )
         config = OllamaConfig(
             model="gemma4:e4b",
             host="http://localhost:11434",
@@ -204,9 +214,11 @@ class MetadataRequestBuilderTests(unittest.TestCase):
                 "id": "abc123",
                 "title": "Coldplay - Yellow (Official Video)",
                 "uploader": "Coldplay",
+                "description": "Official video from the artist channel.",
                 "duration_seconds": 269,
                 "webpage_url": "https://www.youtube.com/watch?v=abc123",
                 "view_count": 100,
+                "search_hit_count": 1,
             }
         ]
 
@@ -222,7 +234,9 @@ class MetadataRequestBuilderTests(unittest.TestCase):
 
         self.assertIs(result, metadata_request)
 
-    def test_build_metadata_lookup_request_passes_search_context_and_prompt(self) -> None:
+    def test_build_metadata_lookup_request_passes_search_context_and_prompt(
+        self,
+    ) -> None:
         metadata_request = MetadataLookupRequest(
             song_name="Yellow",
             artist="Coldplay",
@@ -261,8 +275,12 @@ class MetadataRequestBuilderTests(unittest.TestCase):
 
         kwargs = mock_generate.call_args.kwargs
         payload = json.loads(kwargs["user_input"])
-        self.assertEqual(payload["original_user_request"], "download Yellow by Coldplay")
-        self.assertEqual(payload["youtube_search_results"][0]["title"], search_results[0]["title"])
+        self.assertEqual(
+            payload["original_user_request"], "download Yellow by Coldplay"
+        )
+        self.assertEqual(
+            payload["youtube_search_results"][0]["title"], search_results[0]["title"]
+        )
         self.assertEqual(
             payload["youtube_search_results"][0]["uploader"],
             search_results[0]["uploader"],
@@ -378,7 +396,9 @@ class MetadataSelectorTests(unittest.TestCase):
 
         kwargs = mock_generate.call_args.kwargs
         payload = json.loads(kwargs["user_input"])
-        self.assertEqual(payload["original_user_request"], "download Yellow by Coldplay")
+        self.assertEqual(
+            payload["original_user_request"], "download Yellow by Coldplay"
+        )
         self.assertEqual(
             payload["metadata_candidates"][0]["provider_collection_id"],
             "spotify-album-1",
@@ -443,9 +463,11 @@ class DownloadSelectorTests(unittest.TestCase):
                 "id": "abc123",
                 "title": "Coldplay - Yellow (Official Video)",
                 "uploader": "Coldplay",
+                "description": "Official video from the artist channel.",
                 "duration_seconds": 269,
                 "webpage_url": "https://www.youtube.com/watch?v=abc123",
                 "view_count": 100,
+                "search_hit_count": 2,
             }
         ]
         selection = DownloadAudioSelection.model_validate(
@@ -494,9 +516,11 @@ class DownloadSelectorTests(unittest.TestCase):
                 "id": "abc123",
                 "title": "Coldplay - Yellow (Official Video)",
                 "uploader": "Coldplay",
+                "description": "Official video from the artist channel.",
                 "duration_seconds": 269,
                 "webpage_url": "https://www.youtube.com/watch?v=abc123",
                 "view_count": 100,
+                "search_hit_count": 1,
             }
         ]
         selection = DownloadAudioSelection.model_validate(
@@ -549,6 +573,18 @@ class DownloadSelectorTests(unittest.TestCase):
             payload["youtube_candidates"][0]["webpage_url"],
             "https://www.youtube.com/watch?v=abc123",
         )
+        self.assertEqual(
+            payload["youtube_candidates"][0]["search_hit_count"],
+            1,
+        )
+        self.assertEqual(
+            payload["youtube_candidates"][0]["description"],
+            "Official video from the artist channel.",
+        )
+        self.assertEqual(
+            payload["youtube_candidates"][0]["signals"]["music_video"],
+            True,
+        )
         self.assertIs(kwargs["response_model"], DownloadAudioSelection)
         self.assertIn("strict audio quality filter", kwargs["system_prompt"].lower())
         self.assertEqual(kwargs["config"].host, "http://localhost:11434")
@@ -575,7 +611,75 @@ class DownloadSelectorTests(unittest.TestCase):
                 requested_format="m4a",
             )
 
-    def test_select_fallback_download_audio_request_prefers_audio_with_good_views(self) -> None:
+    def test_select_download_audio_request_prefilters_session_noise(self) -> None:
+        metadata_selection = MetadataSelection(
+            provider="itunes",
+            provider_track_id="123",
+            provider_collection_id="456",
+            title="Kya Dami Bho",
+            artist="Shiva Pariyar",
+            album="Album",
+            artwork_url="https://example.com/art.jpg",
+            duration_ms=325000,
+            is_explicit=True,
+            reason="Canonical studio release.",
+        )
+        search_results = [
+            {
+                "id": "session123",
+                "title": "Kya Dami Bho - Shiva Pariyar (Open Session)",
+                "uploader": "Shiva Pariyar",
+                "description": "Live open session performance from the studio.",
+                "duration_seconds": 329,
+                "webpage_url": "https://www.youtube.com/watch?v=session123",
+                "view_count": 2_000_000,
+            },
+            {
+                "id": "audio456",
+                "title": "Kya Dami Bho - Shiva Pariyar (Official Audio)",
+                "uploader": "Big Music Nepal",
+                "description": "Official audio release.",
+                "duration_seconds": 325,
+                "webpage_url": "https://www.youtube.com/watch?v=audio456",
+                "view_count": 800_000,
+            },
+        ]
+        selection = DownloadAudioSelection.model_validate(
+            {
+                "reasoning": "Best match.",
+                "tool_call": {
+                    "tool": "download_audio",
+                    "parameters": {
+                        "url": "https://www.youtube.com/watch?v=audio456",
+                        "format": "m4a",
+                        "filename": "Shiva Pariyar - Kya Dami Bho",
+                    },
+                },
+            }
+        )
+
+        with patch.object(
+            download_selector_agent,
+            "generate_structured_response",
+            return_value=selection,
+        ) as mock_generate:
+            select_download_audio_request(
+                "download Kya Dami Bho by Shiva Pariyar",
+                metadata_selection,
+                search_results,
+                requested_format="m4a",
+            )
+
+        payload = json.loads(mock_generate.call_args.kwargs["user_input"])
+        self.assertEqual(len(payload["youtube_candidates"]), 1)
+        self.assertEqual(
+            payload["youtube_candidates"][0]["title"],
+            "Kya Dami Bho - Shiva Pariyar (Official Audio)",
+        )
+
+    def test_select_fallback_download_audio_request_prefers_audio_with_good_views(
+        self,
+    ) -> None:
         search_results = [
             {
                 "id": "video123",
@@ -610,6 +714,44 @@ class DownloadSelectorTests(unittest.TestCase):
             "https://www.youtube.com/watch?v=audio456",
         )
         self.assertEqual(selection.tool_call.parameters.filename, "Coldplay - Yellow")
+        self.assertIn("audio-focused title", selection.reasoning.lower())
+
+    def test_select_fallback_download_audio_request_penalizes_session_videos(
+        self,
+    ) -> None:
+        search_results = [
+            {
+                "id": "session123",
+                "title": "Kya Dami Bho - Shiva Pariyar (Open Session)",
+                "uploader": "Shiva Pariyar",
+                "description": "Live open session performance from the studio.",
+                "duration_seconds": 329,
+                "webpage_url": "https://www.youtube.com/watch?v=session123",
+                "view_count": 2_000_000,
+            },
+            {
+                "id": "audio456",
+                "title": "Kya Dami Bho - Shiva Pariyar (Official Audio)",
+                "uploader": "Big Music Nepal",
+                "description": "Official audio release.",
+                "duration_seconds": 325,
+                "webpage_url": "https://www.youtube.com/watch?v=audio456",
+                "view_count": 800_000,
+            },
+        ]
+
+        selection = download_selector_agent.select_fallback_download_audio_request(
+            "download Kya Dami Bho by Shiva Pariyar",
+            search_results,
+            requested_format="m4a",
+            song_name="Kya Dami Bho",
+            artist="Shiva Pariyar",
+        )
+
+        self.assertEqual(
+            selection.tool_call.parameters.url,
+            "https://www.youtube.com/watch?v=audio456",
+        )
         self.assertIn("audio-focused title", selection.reasoning.lower())
 
     def test_select_fallback_download_audio_request_requires_candidates(self) -> None:

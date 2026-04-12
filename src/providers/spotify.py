@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
@@ -9,7 +10,10 @@ from urllib.parse import quote
 
 from spotify_scraper import SpotifyClient
 
+from src._utils import _first_non_empty, _optional_int, _optional_text
 from src.types import MusicMetadataResult, PlaylistTrack
+
+_log = logging.getLogger(__name__)
 
 DEFAULT_SPOTIFY_BROWSER_TYPE = os.environ.get("SPOTIFY_BROWSER_TYPE", "selenium")
 DEFAULT_SPOTIFY_BROWSER_NAME = os.environ.get("SPOTIFY_BROWSER_NAME", "chrome")
@@ -154,7 +158,8 @@ def search_tracks(
             limit=max(limit * _MAX_SEARCH_MULTIPLIER, limit),
             config=active_config,
         )
-    except Exception:
+    except Exception as exc:
+        _log.warning("Spotify URL discovery failed: %s", exc)
         return []
 
     if not candidate_urls:
@@ -162,7 +167,8 @@ def search_tracks(
 
     try:
         client = _build_track_client()
-    except Exception:
+    except Exception as exc:
+        _log.warning("Spotify client init failed: %s", exc)
         return []
     normalized_tracks: list[MusicMetadataResult] = []
     seen_track_ids: set[str] = set()
@@ -170,7 +176,8 @@ def search_tracks(
         for url in candidate_urls:
             try:
                 raw_track = client.get_track_info(url)
-            except Exception:
+            except Exception as exc:
+                _log.warning("Failed to fetch Spotify track %s: %s", url, exc)
                 continue
             normalized_track = _normalize_track(raw_track, track_url=url)
             if normalized_track is None:
@@ -644,29 +651,3 @@ def _fallback_playlist_track_id(
     return normalized or None
 
 
-def _first_non_empty(*values: str | None) -> str | None:
-    for value in values:
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
-
-
-def _optional_text(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip()
-    return normalized or None
-
-
-def _optional_int(value: object) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, str):
-        normalized = value.strip()
-        if normalized.isdigit():
-            return int(normalized)
-    return None

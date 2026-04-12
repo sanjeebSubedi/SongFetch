@@ -1,5 +1,6 @@
 import json
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from src.providers.ollama import DEFAULT_OLLAMA_MODEL
@@ -20,13 +21,16 @@ from src import (
     import_spotify_playlist_tracks,
 )
 from src.providers import itunes, lrclib, spotify
+from src.agents.youtube_fallback_metadata_builder import agent as youtube_fallback_agent
 from src.tools import metadata as metadata_tool
 from src.tools import lyrics as lyrics_tool
 from src.tools import spotify as spotify_tool
 
 
 class FakeResponse:
-    def __init__(self, payload: dict | list[dict], content_type: str = "application/json"):
+    def __init__(
+        self, payload: dict | list[dict], content_type: str = "application/json"
+    ):
         self.payload = payload
         self.headers = {"Content-Type": content_type}
 
@@ -131,7 +135,11 @@ class LRCLibProviderTests(unittest.TestCase):
             )
         ]
 
-        with patch.object(lrclib.request, "urlopen", side_effect=lambda *_args, **_kwargs: responses.pop(0)):
+        with patch.object(
+            lrclib.request,
+            "urlopen",
+            side_effect=lambda *_args, **_kwargs: responses.pop(0),
+        ):
             result = lrclib.lookup_lyrics("Yellow", artist="Coldplay", config=config)
 
         self.assertEqual(result.plain_lyrics, "Look at the stars\nLook how they shine")
@@ -150,7 +158,9 @@ class LRCLibProviderTests(unittest.TestCase):
             )
 
         with patch.object(lrclib.request, "urlopen", side_effect=fake_urlopen):
-            result = lrclib.lookup_lyrics("Unknown Song", artist="Unknown", config=config)
+            result = lrclib.lookup_lyrics(
+                "Unknown Song", artist="Unknown", config=config
+            )
 
         self.assertIsNone(result)
 
@@ -256,7 +266,9 @@ class SpotifyProviderTests(unittest.TestCase):
             ],
         )
 
-    def test_search_tracks_returns_empty_when_browser_type_is_not_supported(self) -> None:
+    def test_search_tracks_returns_empty_when_browser_type_is_not_supported(
+        self,
+    ) -> None:
         result = spotify.search_tracks(
             "Yellow",
             artist="Coldplay",
@@ -339,7 +351,9 @@ class MetadataToolTests(unittest.TestCase):
         }
 
         with patch.object(metadata_tool, "search_songs", return_value=payload):
-            result = fetch_music_metadata("Yellow", artist="Coldplay", album="Parachutes", limit=2)
+            result = fetch_music_metadata(
+                "Yellow", artist="Coldplay", album="Parachutes", limit=2
+            )
 
         self.assertEqual(
             result,
@@ -381,7 +395,7 @@ class MetadataToolTests(unittest.TestCase):
                 "is_explicit": False,
                 "track_number": 5,
                 "disc_number": 1,
-                    "genre": None,
+                "genre": None,
                 "artwork_url": "https://example.com/large.jpg",
                 "preview_url": None,
                 "track_view_url": "https://open.spotify.com/track/spotify-track-1",
@@ -389,7 +403,9 @@ class MetadataToolTests(unittest.TestCase):
             }
         ]
 
-        with patch.object(metadata_tool, "search_spotify_tracks", return_value=spotify_matches) as mock_search:
+        with patch.object(
+            metadata_tool, "search_spotify_tracks", return_value=spotify_matches
+        ) as mock_search:
             result = fetch_spotify_metadata("Yellow", artist="Coldplay", limit=2)
 
         self.assertEqual(result, spotify_matches)
@@ -404,7 +420,9 @@ class MetadataToolTests(unittest.TestCase):
             search_query="Coldplay Yellow official audio",
         )
 
-        with patch.object(metadata_tool, "fetch_music_metadata", return_value=[]) as mock_fetch:
+        with patch.object(
+            metadata_tool, "fetch_music_metadata", return_value=[]
+        ) as mock_fetch:
             fetch_metadata_from_request(song_request, limit=4)
 
         mock_fetch.assert_called_once_with(
@@ -437,7 +455,9 @@ class MetadataToolTests(unittest.TestCase):
             "build_metadata_lookup_request",
             return_value=metadata_request,
         ) as mock_build_request:
-            with patch.object(metadata_tool, "fetch_music_metadata", return_value=[]) as mock_fetch:
+            with patch.object(
+                metadata_tool, "fetch_music_metadata", return_value=[]
+            ) as mock_fetch:
                 fetch_metadata_from_search_results(
                     "download Yellow by Coldplay",
                     search_results,
@@ -481,11 +501,23 @@ class MetadataToolTests(unittest.TestCase):
             "view_count": 50_000,
         }
 
-        result = metadata_tool.build_fallback_tag_metadata(
-            song_request,
-            metadata_request,
-            selected_result=selected_result,
-        )
+        with patch.object(
+            youtube_fallback_agent,
+            "generate_structured_response",
+            return_value=SimpleNamespace(
+                title="Resham Firiri",
+                artist="Kutama Band",
+                album="Folk Favorites",
+                artwork_url="https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+                confidence="medium",
+                reasoning="Title and description indicate the canonical song name.",
+            ),
+        ) as mock_generate:
+            result = metadata_tool.build_fallback_tag_metadata(
+                song_request,
+                metadata_request,
+                selected_result=selected_result,
+            )
 
         self.assertEqual(
             result,
@@ -493,9 +525,23 @@ class MetadataToolTests(unittest.TestCase):
                 title="Resham Firiri",
                 artist="Kutama Band",
                 album="Folk Favorites",
-                artwork_url=None,
+                artwork_url="https://i.ytimg.com/vi/abc123/hqdefault.jpg",
             ),
         )
+        payload = json.loads(mock_generate.call_args.kwargs["user_input"])
+        self.assertEqual(payload["original_user_request"], "Resham Firiri")
+        self.assertEqual(
+            payload["youtube_title"], "Kutama Band - Resham Firiri (Lyrics)"
+        )
+        self.assertEqual(
+            payload["youtube_description"], "From the album Folk Favorites"
+        )
+        self.assertEqual(payload["duration_seconds"], 200)
+        self.assertEqual(
+            payload["youtube_thumbnail_url"],
+            "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+        )
+        self.assertNotIn("uploader", payload)
 
     def test_import_spotify_playlist_tracks_returns_normalized_tracks(self) -> None:
         playlist = {

@@ -6,6 +6,9 @@ from src.agents.metadata_request_builder.agent import (
     build_metadata_lookup_request,
 )
 from src.agents.metadata_request_builder.schema import MetadataLookupRequest
+from src.agents.youtube_fallback_metadata_builder.agent import (
+    build_youtube_fallback_metadata,
+)
 from src.agents.search_query_builder.schema import SongRequest
 from src.providers.ollama import (
     DEFAULT_OLLAMA_HOST,
@@ -20,6 +23,7 @@ from src.providers.spotify import (
     SpotifyConfig,
     search_tracks as search_spotify_tracks,
 )
+from src._utils import _first_non_empty, _optional_int, _optional_text
 from src.types import MusicMetadataResult, SearchResult, TagMetadata
 
 
@@ -120,21 +124,38 @@ def build_fallback_tag_metadata(
     artist = _first_non_empty(
         metadata_lookup_request.artist,
         song_request.artist,
-        _normalize_uploader(selected_result.get("uploader") if selected_result else None),
+        _extract_artist_from_result(selected_result),
     )
     album = _first_non_empty(
         song_request.album,
         _extract_album_from_result(selected_result),
     )
-    return TagMetadata(
-        title=title,
-        artist=artist,
-        album=album,
-        genre=None,
-        track_number=None,
-        disc_number=None,
-        artwork_url=None,
-    )
+
+    try:
+        fallback_metadata = build_youtube_fallback_metadata(
+            f"{song_request.song_name} {song_request.artist or ''}".strip(),
+            selected_result,
+        )
+        return TagMetadata(
+            title=fallback_metadata.title or title,
+            artist=fallback_metadata.artist or artist,
+            album=fallback_metadata.album or album,
+            genre=None,
+            track_number=None,
+            disc_number=None,
+            artwork_url=fallback_metadata.artwork_url
+            or _extract_thumbnail_url(selected_result),
+        )
+    except Exception:
+        return TagMetadata(
+            title=title,
+            artist=artist,
+            album=album,
+            genre=None,
+            track_number=None,
+            disc_number=None,
+            artwork_url=_extract_thumbnail_url(selected_result),
+        )
 
 
 def _build_itunes_query(
@@ -194,26 +215,6 @@ def _normalize_result(result: dict[str, object]) -> MusicMetadataResult:
     }
 
 
-def _first_non_empty(*values: str | None) -> str | None:
-    for value in values:
-        if not isinstance(value, str):
-            continue
-        normalized = value.strip()
-        if normalized:
-            return normalized
-    return None
-
-
-def _normalize_uploader(value: str | None) -> str | None:
-    if not value:
-        return None
-    normalized = value.strip()
-    if not normalized:
-        return None
-    normalized = re.sub(r"\s*-\s*topic$", "", normalized, flags=re.IGNORECASE)
-    return normalized.strip() or None
-
-
 def _extract_title_from_result(selected_result: SearchResult | None) -> str | None:
     if not selected_result:
         return None
@@ -232,6 +233,31 @@ def _extract_title_from_result(selected_result: SearchResult | None) -> str | No
     )
     normalized = re.sub(r"\s+", " ", normalized).strip(" -")
     return normalized or title
+
+
+def _extract_artist_from_result(selected_result: SearchResult | None) -> str | None:
+    if not selected_result:
+        return None
+    title = _optional_text(selected_result.get("title"))
+    if not title:
+        return None
+    normalized = re.sub(r"\[[^\]]+\]|\([^)]+\)", "", title)
+    if " - " in normalized:
+        maybe_artist, _ = normalized.split(" - ", maxsplit=1)
+        maybe_artist = re.sub(
+            r"\b(official video|official audio|lyrics?|lyric video|audio)\b",
+            "",
+            maybe_artist,
+            flags=re.IGNORECASE,
+        )
+        maybe_artist = re.sub(r"\s+", " ", maybe_artist).strip(" -")
+        if maybe_artist:
+            return maybe_artist
+    match = re.search(r"(?i)\bby\s+(.+)$", normalized)
+    if match:
+        artist = re.sub(r"\s+", " ", match.group(1)).strip(" -")
+        return artist or None
+    return None
 
 
 def _extract_album_from_result(selected_result: SearchResult | None) -> str | None:
@@ -254,6 +280,23 @@ def _extract_album_from_result(selected_result: SearchResult | None) -> str | No
     return None
 
 
+def _extract_thumbnail_url(selected_result: SearchResult | None) -> str | None:
+    if not selected_result:
+        return None
+
+    video_id = selected_result.get("id")
+    if not isinstance(video_id, str) or not video_id.strip():
+        webpage_url = _optional_text(selected_result.get("webpage_url"))
+        if not webpage_url:
+            return None
+        match = re.search(r"(?:watch\?v=|youtu\.be/)([A-Za-z0-9_-]{6,})", webpage_url)
+        if not match:
+            return None
+        video_id = match.group(1)
+
+    return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+
+
 def _is_explicit(value: str | None) -> bool | None:
     if value is None:
         return None
@@ -262,23 +305,6 @@ def _is_explicit(value: str | None) -> bool | None:
         return True
     if normalized in {"notexplicit", "cleaned"}:
         return False
-    return None
-
-
-def _optional_text(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip()
-    if not normalized:
-        return None
-    return normalized
-
-
-def _optional_int(value: object) -> int | None:
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and value.isdigit():
-        return int(value)
     return None
 
 

@@ -9,7 +9,7 @@ class SearchResult(TypedDict):
     title: str | None
     uploader: str | None
     description: str | None
-    duration_seconds: int | None
+    duration_seconds: int | float | None
     webpage_url: str | None
     view_count: int | None
 

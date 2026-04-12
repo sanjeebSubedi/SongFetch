@@ -70,6 +70,10 @@ def download_song_audio(
     yt_dlp = get_yt_dlp()
     with yt_dlp.YoutubeDL(download_options) as ydl:
         info = ydl.extract_info(source_url, download=False)
+        if info is None:
+            raise RuntimeError(
+                f"yt-dlp could not extract info for the given URL: {source_url}"
+            )
         planned_output_path = _predict_output_path(
             ydl,
             info,

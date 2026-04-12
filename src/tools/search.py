@@ -39,6 +39,9 @@ def search_song_audio(query: str, limit: int = 5) -> list[SearchResult]:
             download=False,
         )
 
+    if result is None:
+        return []
+
     matches: list[SearchResult] = []
     for entry in result.get("entries", []):
         if not isinstance(entry, dict):

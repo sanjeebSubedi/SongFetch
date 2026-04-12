@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, parse, request
+
+_RETRY_DELAYS: tuple[float, ...] = (0.3, 0.7)
 
 from src.types import LyricsResult
 
@@ -127,15 +130,25 @@ def _request_json(
         method="GET",
     )
 
-    try:
-        with request.urlopen(raw_request, timeout=config.timeout_seconds) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except error.HTTPError as exc:
-        if allow_not_found and exc.code == 404:
+    for attempt in range(len(_RETRY_DELAYS) + 1):
+        try:
+            with request.urlopen(raw_request, timeout=config.timeout_seconds) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            if allow_not_found and exc.code == 404:
+                return None
+            if exc.code in {429, 500, 502, 503, 504} and attempt < len(_RETRY_DELAYS):
+                time.sleep(_RETRY_DELAYS[attempt])
+                continue
             return None
-        return None
-    except (TimeoutError, OSError, error.URLError, json.JSONDecodeError):
-        return None
+        except (TimeoutError, OSError, error.URLError):
+            if attempt < len(_RETRY_DELAYS):
+                time.sleep(_RETRY_DELAYS[attempt])
+                continue
+            return None
+        except json.JSONDecodeError:
+            return None
+    return None
 
 
 def _select_best_search_candidate(

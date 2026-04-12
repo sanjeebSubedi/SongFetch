@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, parse, request
+
+_RETRY_DELAYS: tuple[float, ...] = (0.3, 0.7)
 
 DEFAULT_ITUNES_BASE_URL = "https://itunes.apple.com/search"
 DEFAULT_ITUNES_COUNTRY = os.environ.get("ITUNES_COUNTRY", "US")
@@ -51,7 +54,7 @@ def search_songs(
     )
 
     try:
-        with request.urlopen(raw_request, timeout=active_config.timeout_seconds) as response:
+        with _urlopen_with_retry(raw_request, timeout=active_config.timeout_seconds) as response:
             return json.loads(response.read().decode("utf-8"))
     except error.HTTPError as exc:  # pragma: no cover - depends on live API
         raise RuntimeError(
@@ -61,3 +64,23 @@ def search_songs(
         raise RuntimeError(f"Failed to reach iTunes Search API at {url}: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise RuntimeError("iTunes Search API returned invalid JSON.") from exc
+
+
+def _urlopen_with_retry(req: request.Request, *, timeout: float):
+    last_exc: Exception | None = None
+    for attempt in range(len(_RETRY_DELAYS) + 1):
+        try:
+            return request.urlopen(req, timeout=timeout)
+        except error.HTTPError as exc:
+            if exc.code in {429, 500, 502, 503, 504} and attempt < len(_RETRY_DELAYS):
+                time.sleep(_RETRY_DELAYS[attempt])
+                last_exc = exc
+                continue
+            raise
+        except error.URLError as exc:
+            if attempt < len(_RETRY_DELAYS):
+                time.sleep(_RETRY_DELAYS[attempt])
+                last_exc = exc
+                continue
+            raise
+    raise last_exc  # type: ignore[misc]

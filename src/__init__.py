@@ -1,6 +1,6 @@
-from src.env import load_env_file
+from dotenv import load_dotenv
 
-load_env_file()
+load_dotenv()
 
 __all__ = [
     "search_song_audio",
@@ -15,12 +15,14 @@ __all__ = [
     "build_song_request",
     "parse_download_request",
     "build_metadata_lookup_request",
+    "build_youtube_fallback_metadata",
     "select_metadata_match",
     "select_download_audio_request",
     "SongRequest",
     "MetadataLookupRequest",
     "MetadataSelection",
     "DownloadAudioSelection",
+    "YouTubeFallbackMetadata",
     "TagMetadata",
     "LyricsResult",
     "PlaylistTrack",
@@ -82,6 +84,12 @@ def __getattr__(name: str):
         )
 
         return build_metadata_lookup_request
+    if name == "build_youtube_fallback_metadata":
+        from src.agents.youtube_fallback_metadata_builder.agent import (
+            build_youtube_fallback_metadata,
+        )
+
+        return build_youtube_fallback_metadata
     if name == "select_metadata_match":
         from src.agents.metadata_selector.agent import select_metadata_match
 
@@ -108,6 +116,12 @@ def __getattr__(name: str):
         from src.agents.download_selector.schema import DownloadAudioSelection
 
         return DownloadAudioSelection
+    if name == "YouTubeFallbackMetadata":
+        from src.agents.youtube_fallback_metadata_builder.schema import (
+            YouTubeFallbackMetadata,
+        )
+
+        return YouTubeFallbackMetadata
     if name == "TagMetadata":
         from src.types import TagMetadata
 

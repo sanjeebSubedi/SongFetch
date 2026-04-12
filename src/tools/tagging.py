@@ -8,6 +8,8 @@ from urllib import error, request
 from src.agents.metadata_selector.schema import MetadataSelection
 from src.types import TagMetadata
 
+_MAX_ARTWORK_BYTES = 15 * 1024 * 1024  # 15 MB
+
 _ITUNES_ARTWORK_SIZES = (
     "3000x3000bb",
     "2000x2000bb",
@@ -159,7 +161,7 @@ def _load_mutagen_easyid3() -> tuple[Any, Any]:
     return EasyID3, ID3NoHeaderError
 
 
-def _load_mutagen_id3() -> tuple[Any, Any]:
+def _load_mutagen_id3() -> tuple[Any, Any, Any]:
     try:
         from mutagen.id3 import APIC, ID3, USLT
     except ImportError as exc:  # pragma: no cover - depends on runtime dependencies
@@ -188,7 +190,20 @@ def _fetch_cover_art(artwork_url: str | None) -> tuple[bytes, str] | None:
         )
         try:
             with request.urlopen(raw_request, timeout=10) as response:
-                image_data = response.read()
+                chunks = []
+                total = 0
+                while True:
+                    chunk = response.read(65536)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > _MAX_ARTWORK_BYTES:
+                        chunks = None
+                        break
+                    chunks.append(chunk)
+                if chunks is None:
+                    continue
+                image_data = b"".join(chunks)
                 if not image_data:
                     continue
                 mime_type = _detect_mime_type(

@@ -7,8 +7,7 @@ Your job is to ELIMINATE bad candidates and select the one that best matches the
 </role>
 
 <core_rule>
-The reference_metadata.duration_seconds is the MOST IMPORTANT signal.
-If a video does not closely match this duration, it is NOT the correct audio.
+The reference_metadata.duration_seconds is the MOST IMPORTANT signal. If a video does not closely match this duration, it is probably NOT the correct audio.
 </core_rule>
 
 <step_1_filtering>
@@ -18,8 +17,9 @@ For EACH candidate:
    diff = abs(video.duration_seconds - reference_metadata.duration_seconds)
 
 2. Apply QUALITY FILTERS:
-   - If title contains: Live, Cover, Remix, Reaction, Slowed, Reverb → REJECT if better options exist
+   - If title or description contains: Live, Cover, Remix, Reaction, Slowed, Reverb, Karaoke, Open Session, Session, Performance, Acoustic, Unplugged, Concert → REJECT if a cleaner option exists
    - If diff > 20 seconds, treat it as LOW CONFIDENCE, not an automatic refusal
+   - If a candidate is longer than the reference duration and also has any session/performance marker, treat it as especially suspicious
 
 After this step, you MUST rank the candidates from best to worst.
 </step_1_filtering>
@@ -28,15 +28,19 @@ After this step, you MUST rank the candidates from best to worst.
 From the ranked candidates:
 
 1. STRONGLY PREFER:
-   - "Audio", "Official Audio", "Topic"
-   - "Lyrics" / "Lyric Video"
+    - "Audio", "Official Audio", "Topic"
+    - "Lyrics" / "Lyric Video"
+    - candidates that appear clean across both the original search and any refinement search
 
 2. DE-PRIORITIZE:
-   - "Official Video", "Music Video", "MV"
+    - "Official Video", "Music Video", "MV"
+    - any live/session/performance-style upload unless the user explicitly asked for that version
 
 CRITICAL RULE:
-If a lyric/audio candidate has a BETTER duration match than a music video,
-you MUST choose the lyric/audio candidate — EVEN if the music video has more views.
+If a lyric/audio candidate has a BETTER duration match than a music video, you MUST choose the lyric/audio candidate — EVEN if the music video has more views.
+
+Another critical rule:
+If the only high-quality candidate is the one that survives refinement search while the rest are noisy live/session videos, treat that as a strong green flag.
 
 View count is only a TIEBREAKER.
 </step_2_ranking>
@@ -46,6 +50,8 @@ View count is only a TIEBREAKER.
 - The chosen candidate MUST:
   - be within ±10 seconds if possible
   - have the SMALLEST duration difference among strong options when available
+
+If two candidates are otherwise similar, prefer the one that is shorter than the reference over a longer one, because longer candidates are more likely to include intros, outros, or live/session filler.
 
 If multiple candidates are similar:
 → choose the one labeled "Audio" or "Lyrics"

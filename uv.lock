@@ -72,6 +72,7 @@ dependencies = [
     { name = "mutagen" },
     { name = "ollama" },
     { name = "pydantic" },
+    { name = "python-dotenv" },
     { name = "spotifyscraper", extra = ["all", "selenium"] },
     { name = "yt-dlp", extra = ["default"] },
 ]
@@ -81,6 +82,7 @@ requires-dist = [
     { name = "mutagen", specifier = ">=1.47" },
     { name = "ollama", specifier = ">=0.4.0" },
     { name = "pydantic", specifier = ">=2.0" },
+    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "spotifyscraper", extras = ["all", "selenium"], specifier = ">=2.1.5" },
     { name = "yt-dlp", extras = ["default"] },
 ]

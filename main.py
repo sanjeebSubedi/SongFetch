@@ -25,6 +25,7 @@ from src.providers.ollama import (
     DEFAULT_OLLAMA_TEMPERATURE,
 )
 from src.providers.spotify import SpotifyConfig
+from src.pipeline import PipelineConfig, PipelineDependencies, SongPipelineController
 from src.tools.download import download_song_audio
 from src.tools.lyrics import fetch_lyrics
 from src.tools.metadata import (
@@ -49,184 +50,31 @@ def run_pipeline(
     itunes_base_url: str = DEFAULT_ITUNES_BASE_URL,
     itunes_country: str = DEFAULT_ITUNES_COUNTRY,
 ) -> dict[str, Any]:
-    normalized_user_input = user_input.strip()
-    if not normalized_user_input:
-        raise ValueError("user_input must not be empty")
-
-    _progress("1/10 Building song request from user input")
-    song_request = build_song_request(
-        normalized_user_input,
-        model=model,
-        host=host,
-        temperature=temperature,
-    )
-    _progress("2/10 Searching YouTube candidates")
-    search_results = search_song_audio(song_request.search_query, limit=search_limit)
-    if not search_results:
-        raise RuntimeError(
-            "No YouTube search results were found for the generated query."
-        )
-
-    _progress("3/10 Building metadata lookup request from YouTube results")
-    metadata_lookup_request = build_metadata_lookup_request(
-        normalized_user_input,
-        search_results,
-        model=model,
-        host=host,
-        temperature=temperature,
-    )
-    _progress("4/10 Fetching metadata from iTunes Search API")
-    itunes_config = ITunesConfig(
-        base_url=itunes_base_url,
-        country=itunes_country,
-    )
-    metadata_matches = fetch_music_metadata(
-        metadata_lookup_request.song_name,
-        artist=metadata_lookup_request.artist,
-        limit=metadata_limit,
-        config=itunes_config,
-    )
-    if not metadata_matches:
-        _progress("5/10 No iTunes metadata found; trying Spotify metadata")
-        metadata_matches = fetch_spotify_metadata(
-            metadata_lookup_request.song_name,
-            artist=metadata_lookup_request.artist,
-            limit=metadata_limit,
-            config=SpotifyConfig(),
-        )
-
-    selected_metadata_model = None
-    selected_download = None
-    download_result = None
-    tagging_result = None
-    selected_download_model = None
-    lyrics_result_model: LyricsResult | None = None
-    tag_metadata: TagMetadata | None = None
-    download_selection_source: str | None = None
-
-    if metadata_matches:
-        _progress("6/10 Selecting canonical metadata match")
-        selected_metadata_model = select_metadata_match(
-            normalized_user_input,
-            metadata_matches,
+    controller = SongPipelineController(
+        deps=PipelineDependencies(
+            build_song_request=build_song_request,
+            search_song_audio=search_song_audio,
+            build_metadata_lookup_request=build_metadata_lookup_request,
+            fetch_music_metadata=fetch_music_metadata,
+            fetch_spotify_metadata=fetch_spotify_metadata,
+            select_metadata_match=select_metadata_match,
+            select_download_audio_request=select_download_audio_request,
+            select_fallback_download_audio_request=select_fallback_download_audio_request,
+            download_song_audio=download_song_audio,
+            fetch_lyrics=fetch_lyrics,
+            embed_selected_metadata=embed_selected_metadata,
+            build_fallback_tag_metadata=build_fallback_tag_metadata,
+        ),
+        config=PipelineConfig(
             model=model,
             host=host,
             temperature=temperature,
-        )
-        _progress("7/10 Selecting best YouTube URL for download")
-        try:
-            selected_download_model = select_download_audio_request(
-                normalized_user_input,
-                selected_metadata_model,
-                search_results,
-                requested_format=song_request.format,
-                model=model,
-                host=host,
-                temperature=temperature,
-            )
-            download_selection_source = "metadata_selector"
-        except Exception as exc:
-            _progress(
-                f"7/10 Metadata-backed selection failed; using fallback selector ({exc})"
-            )
-            selected_download_model = select_fallback_download_audio_request(
-                normalized_user_input,
-                search_results,
-                requested_format=song_request.format,
-                song_name=selected_metadata_model.title,
-                artist=selected_metadata_model.artist,
-            )
-            download_selection_source = "fallback_selector"
-        tag_metadata = TagMetadata(
-            title=selected_metadata_model.title,
-            artist=selected_metadata_model.artist,
-            album=selected_metadata_model.album,
-            genre=selected_metadata_model.genre,
-            track_number=selected_metadata_model.track_number,
-            disc_number=selected_metadata_model.disc_number,
-            artwork_url=selected_metadata_model.artwork_url,
-        )
-    else:
-        _progress("6/10 No provider metadata found; switching to fallback selection")
-        _progress("7/10 Selecting fallback YouTube candidate")
-        selected_download_model = select_fallback_download_audio_request(
-            normalized_user_input,
-            search_results,
-            requested_format=song_request.format,
-            song_name=metadata_lookup_request.song_name,
-            artist=metadata_lookup_request.artist,
-        )
-        download_selection_source = "fallback_selector"
-        selected_result = _find_search_result_by_url(
-            search_results,
-            selected_download_model.tool_call.parameters.url,
-        )
-        tag_metadata = build_fallback_tag_metadata(
-            song_request,
-            metadata_lookup_request,
-            selected_result=selected_result,
-        )
-
-    if selected_download_model is not None:
-        selected_download = selected_download_model.model_dump()
-        _progress("8/10 Downloading audio")
-        download_result = download_song_audio(
-            selected_download_model.tool_call.parameters.url,
-            audio_format=selected_download_model.tool_call.parameters.format,
-            filename=selected_download_model.tool_call.parameters.filename,
-        )
-        if tag_metadata is not None:
-            _progress("9/10 Looking up lyrics")
-            try:
-                lyrics_result_model = fetch_lyrics(
-                    tag_metadata,
-                    duration_seconds=_lyrics_duration_seconds(
-                        selected_metadata_model=selected_metadata_model,
-                        search_results=search_results,
-                        selected_url=selected_download_model.tool_call.parameters.url,
-                    ),
-                    config=LRCLibConfig(),
-                )
-            except Exception as exc:
-                _progress(
-                    f"9/10 Lyrics lookup failed; continuing without lyrics ({exc})"
-                )
-                lyrics_result_model = None
-        _progress("10/10 Embedding metadata tags")
-        tagging_target = selected_metadata_model or tag_metadata
-        tagging_result = embed_selected_metadata(
-            download_result["output_path"],
-            tagging_target,
-            lyrics=(
-                lyrics_result_model.plain_lyrics
-                if lyrics_result_model is not None
-                else None
-            ),
-        )
-
-    return {
-        "user_input": normalized_user_input,
-        "song_request": song_request.model_dump(),
-        "search_results": search_results,
-        "metadata_lookup_request": metadata_lookup_request.model_dump(),
-        "metadata_matches": metadata_matches,
-        "metadata_source": _metadata_source(selected_metadata_model),
-        "download_selection_source": download_selection_source,
-        "selected_metadata": (
-            selected_metadata_model.model_dump() if selected_metadata_model else None
+            search_limit=search_limit,
+            metadata_limit=metadata_limit,
         ),
-        "selected_download": selected_download,
-        "download_result": download_result,
-        "lyrics_result": _serialize_lyrics_result(
-            lyrics_result_model,
-            lyrics_embedded=bool(
-                tagging_result.get("lyrics_embedded")
-                if isinstance(tagging_result, dict)
-                else False
-            ),
-        ),
-        "tagging_result": tagging_result,
-    }
+        progress=_progress,
+    )
+    return controller.run(user_input)
 
 
 def run_spotify_playlist_pipeline(
@@ -325,8 +173,12 @@ def _lyrics_duration_seconds(
         return None
 
     duration_seconds = selected_result.get("duration_seconds")
-    if isinstance(duration_seconds, int) and duration_seconds > 0:
-        return duration_seconds
+    if (
+        isinstance(duration_seconds, (int, float))
+        and not isinstance(duration_seconds, bool)
+        and duration_seconds > 0
+    ):
+        return round(duration_seconds)
     return None
 
 

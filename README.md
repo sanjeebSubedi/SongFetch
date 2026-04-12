@@ -57,7 +57,7 @@ It currently exposes these main entry points for the workflow:
 - `fetch_metadata_from_search_results(user_input, search_results, limit=5)`
 - `select_metadata_match(user_input, metadata_matches)`
 - `select_download_audio_request(user_input, metadata_selection, search_results, requested_format)`
-- `parse_download_request(user_input, model="gemma4:e4b")`
+- `parse_download_request(user_input, model="gemma4:31b-cloud")`
 - `import_spotify_playlist_tracks(playlist_ref)`
 
 The model-powered part of the app is split by responsibility:

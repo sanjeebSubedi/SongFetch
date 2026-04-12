@@ -12,6 +12,7 @@ dependencies = [
     "mutagen>=1.47",
     "ollama>=0.4.0",
     "pydantic>=2.0",
+    "python-dotenv>=1.0",
     "spotifyscraper[all,selenium]>=2.1.5",
     "yt-dlp[default]",
 ]

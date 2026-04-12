@@ -36,6 +36,8 @@ def select_download_audio_request(
     if not search_results:
         raise ValueError("search_results must not be empty")
 
+    prompt_candidates = _prepare_prompt_candidates(user_input, search_results)
+
     config = OllamaConfig(
         model=model,
         host=host,
@@ -45,7 +47,7 @@ def select_download_audio_request(
         user_input=_build_user_prompt(
             user_input,
             metadata_selection,
-            search_results,
+            prompt_candidates,
             requested_format=requested_format,
         ),
         response_model=DownloadAudioSelection,
@@ -103,6 +105,30 @@ def _build_system_prompt() -> str:
     )
 
 
+def _prepare_prompt_candidates(
+    user_input: str,
+    search_results: list[SearchResult],
+) -> list[SearchResult]:
+    if _user_asked_for_specific_version(user_input):
+        return search_results
+
+    audio_or_lyric_candidates = [
+        result for result in search_results if _is_audio_or_lyric_candidate(result)
+    ]
+    if audio_or_lyric_candidates:
+        return audio_or_lyric_candidates
+
+    non_session_candidates = [
+        result
+        for result in search_results
+        if not _is_session_or_performance_candidate(result)
+    ]
+    if non_session_candidates:
+        return non_session_candidates
+
+    return search_results
+
+
 def _select_best_fallback_candidate(
     search_results: list[SearchResult],
 ) -> SearchResult:
@@ -122,6 +148,7 @@ def _fallback_candidate_score(
     top_view_count: int,
 ) -> float:
     title = (result.get("title") or "").lower()
+    description = (result.get("description") or "").lower()
     uploader = (result.get("uploader") or "").lower()
     score = math.log10(_view_count(result) + 1) * 20
 
@@ -138,6 +165,30 @@ def _fallback_candidate_score(
         "slowed",
         "reverb",
         "karaoke",
+        "open session",
+        "open sessions",
+        "session",
+        "performance",
+        "acoustic",
+        "unplugged",
+        "concert",
+    )
+    description_noise = _has_keyword(
+        description,
+        "live",
+        "cover",
+        "remix",
+        "reaction",
+        "slowed",
+        "reverb",
+        "karaoke",
+        "open session",
+        "open sessions",
+        "session",
+        "performance",
+        "acoustic",
+        "unplugged",
+        "concert",
     )
 
     if topic_channel:
@@ -150,6 +201,8 @@ def _fallback_candidate_score(
         score -= 20
     if noisy_variant:
         score -= 120
+    if description_noise:
+        score -= 140
 
     candidate_views = _view_count(result)
     if (topic_channel or audio_like or lyric_like) and candidate_views >= max(
@@ -201,6 +254,7 @@ def _build_fallback_reasoning(
 ) -> str:
     del user_input
     title = candidate.get("title") or "Unknown title"
+    description = (candidate.get("description") or "").lower()
     views = _view_count(candidate)
     top_views = max((_view_count(result) for result in all_candidates), default=0)
     reasons: list[str] = []
@@ -212,6 +266,17 @@ def _build_fallback_reasoning(
         reasons.append("audio-focused title")
     if "lyric" in lowered_title:
         reasons.append("lyrics version")
+    if any(
+        token in description
+        for token in (
+            "open session",
+            "open sessions",
+            "performance",
+            "live",
+            "acoustic",
+        )
+    ):
+        reasons.append("session/performance marker in description")
     if views >= top_views and views > 0:
         reasons.append("highest view count")
     elif views > 0:
@@ -221,6 +286,71 @@ def _build_fallback_reasoning(
         reasons.append("best overall fallback score from YouTube results")
 
     return f'Selected "{title}" from {uploader} based on ' + ", ".join(reasons) + "."
+
+
+def _user_asked_for_specific_version(user_input: str) -> bool:
+    lowered = user_input.lower()
+    return any(
+        keyword in lowered
+        for keyword in (
+            "live",
+            "acoustic",
+            "remix",
+            "instrumental",
+            "karaoke",
+            "sped up",
+            "slowed",
+            "reverb",
+            "open session",
+            "open sessions",
+            "session",
+            "performance",
+            "cover",
+        )
+    )
+
+
+def _is_audio_or_lyric_candidate(result: SearchResult) -> bool:
+    combined = _candidate_text(result)
+    return _has_keyword(
+        combined,
+        "official audio",
+        " audio",
+        "(audio)",
+        "[audio]",
+        "lyrics",
+        "lyric video",
+        "lyric",
+        "topic",
+    )
+
+
+def _is_session_or_performance_candidate(result: SearchResult) -> bool:
+    combined = _candidate_text(result)
+    return _has_keyword(
+        combined,
+        "live",
+        "cover",
+        "remix",
+        "reaction",
+        "slowed",
+        "reverb",
+        "karaoke",
+        "open session",
+        "open sessions",
+        "session",
+        "performance",
+        "acoustic",
+        "unplugged",
+        "concert",
+    )
+
+
+def _candidate_text(result: SearchResult) -> str:
+    title = (result.get("title") or "").lower()
+    description = (result.get("description") or "").lower()
+    uploader = (result.get("uploader") or "").lower()
+    return f"{title} {description} {uploader}"
 
 
 def _clean_text(value: str | None) -> str | None:
@@ -270,11 +400,65 @@ def _build_user_prompt(
                 "id": result.get("id"),
                 "title": result.get("title"),
                 "uploader": result.get("uploader"),
+                "description": result.get("description"),
                 "duration_seconds": result.get("duration_seconds"),
+                "duration_delta_seconds": _duration_delta_seconds(
+                    reference_duration_seconds=reference_duration_ms / 1000,
+                    candidate_duration_seconds=result.get("duration_seconds"),
+                ),
+                "search_hit_count": result.get("search_hit_count") or 1,
                 "view_count": result.get("view_count"),
                 "webpage_url": result.get("webpage_url"),
+                "signals": _candidate_signals(result),
             }
             for index, result in enumerate(search_results, start=1)
         ],
     }
     return json.dumps(payload, indent=2)
+
+
+def _duration_delta_seconds(
+    *,
+    reference_duration_seconds: float,
+    candidate_duration_seconds: object,
+) -> int | None:
+    if not isinstance(candidate_duration_seconds, (int, float)) or isinstance(
+        candidate_duration_seconds, bool
+    ):
+        return None
+    if candidate_duration_seconds <= 0:
+        return None
+    return round(candidate_duration_seconds - reference_duration_seconds)
+
+
+def _candidate_signals(result: SearchResult) -> dict[str, bool]:
+    title = (result.get("title") or "").lower()
+    description = (result.get("description") or "").lower()
+    uploader = (result.get("uploader") or "").lower()
+    combined = f"{title} {description}"
+
+    return {
+        "audio_like": _has_keyword(
+            combined, "official audio", " audio", "(audio)", "[audio]"
+        ),
+        "lyrics_like": _has_keyword(combined, "lyrics", "lyric video", "lyric"),
+        "topic_channel": "topic" in uploader,
+        "music_video": _has_keyword(combined, "official video", "music video", " mv"),
+        "session_like": _has_keyword(
+            combined,
+            "live",
+            "cover",
+            "remix",
+            "reaction",
+            "slowed",
+            "reverb",
+            "karaoke",
+            "open session",
+            "open sessions",
+            "session",
+            "performance",
+            "acoustic",
+            "unplugged",
+            "concert",
+        ),
+    }
