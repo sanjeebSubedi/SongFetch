@@ -9,7 +9,9 @@ from urllib import error, parse, request
 
 _RETRY_DELAYS: tuple[float, ...] = (0.3, 0.7)
 
-DEFAULT_ITUNES_BASE_URL = "https://itunes.apple.com/search"
+DEFAULT_ITUNES_BASE_URL = os.environ.get(
+    "ITUNES_BASE_URL", "https://itunes.apple.com/search"
+)
 DEFAULT_ITUNES_COUNTRY = os.environ.get("ITUNES_COUNTRY", "US")
 DEFAULT_ITUNES_MEDIA = "music"
 DEFAULT_ITUNES_ENTITY = "song"
@@ -54,14 +56,18 @@ def search_songs(
     )
 
     try:
-        with _urlopen_with_retry(raw_request, timeout=active_config.timeout_seconds) as response:
+        with _urlopen_with_retry(
+            raw_request, timeout=active_config.timeout_seconds
+        ) as response:
             return json.loads(response.read().decode("utf-8"))
     except error.HTTPError as exc:  # pragma: no cover - depends on live API
         raise RuntimeError(
             f"iTunes Search API request failed with status {exc.code} for {url}."
         ) from exc
     except error.URLError as exc:  # pragma: no cover - depends on network
-        raise RuntimeError(f"Failed to reach iTunes Search API at {url}: {exc}") from exc
+        raise RuntimeError(
+            f"Failed to reach iTunes Search API at {url}: {exc}"
+        ) from exc
     except json.JSONDecodeError as exc:
         raise RuntimeError("iTunes Search API returned invalid JSON.") from exc
 

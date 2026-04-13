@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import re
+import os
 from dataclasses import dataclass
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
-DEFAULT_OLLAMA_MODEL = "gemma4:31b-cloud"
-DEFAULT_OLLAMA_TEMPERATURE = 0
+DEFAULT_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
+DEFAULT_OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:31b-cloud")
+DEFAULT_OLLAMA_TEMPERATURE = float(os.environ.get("OLLAMA_TEMPERATURE", "0"))
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -44,21 +45,35 @@ def generate_structured_response(
 
     active_config = config or OllamaConfig()
     client = build_ollama_client(active_config.host)
-    response = client.chat(
-        model=active_config.model,
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
-        format=response_model.model_json_schema(),
-        options={"temperature": active_config.temperature},
-    )
+    try:
+        response = client.chat(
+            model=active_config.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            format=response_model.model_json_schema(),
+            options={"temperature": active_config.temperature},
+        )
+    except Exception as exc:
+        message = str(exc)
+        if "unauthorized" in message.lower() or "401" in message:
+            signin_hint = "Run `ollama signin` to continue."
+            if "ollama:11434" in active_config.host:
+                signin_hint = (
+                    "Run `docker compose exec ollama ollama signin` to continue."
+                )
+            raise RuntimeError(
+                "Ollama rejected the configured model. Cloud models require Ollama sign-in. "
+                f"{signin_hint}"
+            ) from exc
+        raise
     response_content = getattr(getattr(response, "message", None), "content", None)
     if not isinstance(response_content, str):
         raise RuntimeError(

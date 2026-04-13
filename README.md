@@ -30,6 +30,27 @@ source .venv/bin/activate
 pip install -e .
 ```
 
+Copy `.env.example` to `.env` to customize runtime settings.
+
+This project defaults to `gemma4:31b-cloud`, which requires `ollama signin` before use.
+
+Local Ollama setup:
+
+```bash
+ollama signin
+```
+
+## Docker
+
+```bash
+docker compose up -d ollama
+docker compose exec ollama ollama signin
+docker compose run --rm app "download Yellow by Coldplay as m4a"
+```
+
+The Docker setup starts an Ollama server alongside the app and keeps Ollama state in a Docker volume, so sign-in only needs to happen once per volume.
+The app container also keeps its local cache in a repo-local bind mount to avoid transient Selenium cache issues.
+
 ## Usage
 
 Single song:
@@ -58,7 +79,8 @@ Tests:
 
 ## Notes
 
-- The app currently expects an Ollama host to be available.
+- Outside Docker, the app expects an Ollama host to be available.
+- The default model is `gemma4:31b-cloud`, so Ollama Cloud sign-in is required.
 - OpenAI API compatibility is coming soon.
 - iTunes is the preferred metadata source.
 - Spotify is used as a fallback when needed.

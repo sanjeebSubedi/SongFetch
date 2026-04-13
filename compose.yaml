@@ -1,0 +1,61 @@
+name: songfetch
+
+x-songfetch-env: &songfetch-env
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:31b-cloud}
+  OLLAMA_TEMPERATURE: ${OLLAMA_TEMPERATURE:-0}
+  ITUNES_BASE_URL: ${ITUNES_BASE_URL:-https://itunes.apple.com/search}
+  ITUNES_COUNTRY: ${ITUNES_COUNTRY:-US}
+  LRCLIB_USER_AGENT: ${LRCLIB_USER_AGENT:-audio-agent/0.1.0}
+  SPOTIFY_BROWSER_TYPE: selenium
+  SPOTIFY_BROWSER_NAME: chrome
+  SPOTIFY_HEADLESS: "true"
+  SPOTIFY_USE_WEBDRIVER_MANAGER: "false"
+  SPOTIFY_TIMEOUT_SECONDS: ${SPOTIFY_TIMEOUT_SECONDS:-10}
+  SPOTIFY_SCROLL_PAUSE_SECONDS: ${SPOTIFY_SCROLL_PAUSE_SECONDS:-1.2}
+  SPOTIFY_MAX_IDLE_SCROLLS: ${SPOTIFY_MAX_IDLE_SCROLLS:-12}
+  YTDLP_COOKIES_BROWSER: none
+  YTDLP_COOKIES_PROFILE: ${YTDLP_COOKIES_PROFILE:-}
+  YTDLP_JS_RUNTIME: node
+  YTDLP_REMOTE_COMPONENTS: ${YTDLP_REMOTE_COMPONENTS:-ejs:github}
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: songfetch-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    command: ["serve"]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    container_name: songfetch-app
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      <<: *songfetch-env
+      OLLAMA_HOST: http://ollama:11434
+      XDG_CACHE_HOME: /home/appuser/.cache
+    volumes:
+      - ./downloads:/app/downloads
+      - ./.cache:/home/appuser/.cache
+    working_dir: /app
+    entrypoint: ["python", "main.py"]
+    stdin_open: true
+    tty: true
+
+volumes:
+  ollama_data:
