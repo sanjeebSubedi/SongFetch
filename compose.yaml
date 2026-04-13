@@ -48,10 +48,9 @@ services:
     environment:
       <<: *songfetch-env
       OLLAMA_HOST: http://ollama:11434
-      XDG_CACHE_HOME: /home/appuser/.cache
+      XDG_CACHE_HOME: /app/downloads/.cache
     volumes:
       - ./downloads:/app/downloads
-      - ./.cache:/home/appuser/.cache
     working_dir: /app
     entrypoint: ["python", "main.py"]
     stdin_open: true

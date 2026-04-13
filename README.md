@@ -49,7 +49,7 @@ docker compose run --rm app "download Yellow by Coldplay as m4a"
 ```
 
 The Docker setup starts an Ollama server alongside the app and keeps Ollama state in a Docker volume, so sign-in only needs to happen once per volume.
-The app container also keeps its local cache in a repo-local bind mount to avoid transient Selenium cache issues.
+The app container also keeps its local cache under the downloads mount to avoid transient Selenium cache issues.
 
 ## Usage
 
