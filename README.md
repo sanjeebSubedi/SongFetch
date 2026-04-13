@@ -15,7 +15,7 @@ It is built to handle the kinds of requests people actually type: misspellings, 
 ## Stack
 
 - Python 3.12+
-- Ollama
+- Ollama (install from https://ollama.com if it is not already on your machine)
 - yt-dlp
 - iTunes Search API
 - Spotify scraping fallback
@@ -58,6 +58,8 @@ Tests:
 
 ## Notes
 
+- The app currently expects an Ollama host to be available.
+- OpenAI API compatibility is coming soon.
 - iTunes is the preferred metadata source.
 - Spotify is used as a fallback when needed.
 - When metadata providers fail, the pipeline still returns a best-effort result.
